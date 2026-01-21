@@ -62,7 +62,7 @@ with col1:
         st.success("Dataset cleaned successfully ✅")
 
         # preview only first 5 rows
-        preview_df = cleaned_df.head(5)
+        preview_df = cleaned_df.head(20)
         st.subheader("Cleaned Data Preview (First 5 Rows)")
         st.dataframe(preview_df)
 
