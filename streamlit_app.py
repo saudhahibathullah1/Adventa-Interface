@@ -49,20 +49,61 @@ if uploaded_file is not None:
     st.subheader("Raw Data Preview")
     st.dataframe(raw_df.head())
 
-    if st.button("Clean Dataset"):
-        cleaned_df = clean_ad_data(raw_df)
+    col1, col2 = st.columns(2)
 
-        st.success("Dataset cleaned successfully ✅")
+    # -------- CLEAN BUTTON --------
+    with col1:
+        if st.button("🧹 Clean Dataset"):
+            cleaned_df = clean_ad_data(raw_df)
 
-        st.subheader("Cleaned Data Preview")
-        st.dataframe(cleaned_df.head())
+            st.success("Dataset cleaned successfully ✅")
 
-        # ✅ Correct indentation starts here
-        csv = cleaned_df.to_csv(index=False).encode("utf-8")
+            st.subheader("Cleaned Data Preview")
+            st.dataframe(cleaned_df.head())
 
-        st.download_button(
-            label="Download Cleaned Dataset",
-            data=csv,
-            file_name="adventa_cleaned_data.csv",
-            mime="text/csv"
-        )
+            csv = cleaned_df.to_csv(index=False).encode("utf-8")
+
+            st.download_button(
+                label="Download Cleaned Dataset",
+                data=csv,
+                file_name="adventa_cleaned_data.csv",
+                mime="text/csv"
+            )
+
+    # -------- ANALYZE BUTTON --------
+    with col2:
+        if st.button("📊 Analyze"):
+            df = clean_ad_data(raw_df)
+
+            required_cols = [
+                "total_revenue",
+                "fb_spend",
+                "instagram_spend",
+                "tiktok_spend"
+            ]
+
+            missing = [c for c in required_cols if c not in df.columns]
+
+            if missing:
+                st.error(f"Missing columns: {', '.join(missing)}")
+            else:
+                total_revenue = df["total_revenue"].sum()
+
+                total_ad_spend = (
+                    df["fb_spend"].sum()
+                    + df["instagram_spend"].sum()
+                    + df["tiktok_spend"].sum()
+                )
+
+                ad_spend_pct = (
+                    (total_ad_spend / total_revenue) * 100
+                    if total_revenue > 0 else 0
+                )
+
+                st.metric("Total Revenue", f"{total_revenue:,.2f}")
+                st.metric("Total Ad Spend", f"{total_ad_spend:,.2f}")
+                st.metric(
+                    "% of Revenue Spent on Ads",
+                    f"{ad_spend_pct:.2f}%"
+                )
+
