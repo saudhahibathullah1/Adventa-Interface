@@ -1,9 +1,8 @@
 import streamlit as st
 import pandas as pd
 
-st.title('🎈 Adventa')
-
-st.write('Hello world!')
+st.title("🎈 Adventa")
+st.write("Hello world!")
 
 st.title("AdVanta – Data Import & Cleaning")
 
@@ -32,7 +31,7 @@ def clean_ad_data(df):
     if "date" in df.columns:
         df["date"] = pd.to_datetime(df["date"], errors="coerce")
 
-    # 🔴 Drop total_revenue column if all values are 0
+    # Drop total_revenue if all zeros
     if "total_revenue" in df.columns:
         if (df["total_revenue"] == 0).all():
             df = df.drop(columns=["total_revenue"])
@@ -53,7 +52,8 @@ if uploaded_file is not None:
         st.subheader("Cleaned Data Preview")
         st.dataframe(cleaned_df.head())
 
- csv = cleaned_df.to_csv(index=False).encode("utf-8")
+        # ✅ Correct indentation starts here
+        csv = cleaned_df.to_csv(index=False).encode("utf-8")
 
         st.download_button(
             label="Download Cleaned Dataset",
