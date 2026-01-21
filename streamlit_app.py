@@ -29,7 +29,12 @@ def clean_ad_data(df):
 
     # Convert date column if exists
     if "date" in df.columns:
-        df["date"] = pd.to_datetime(df["date"], errors="coerce")
+        df["date"] = pd.to_datetime(
+            df["date"],
+            dayfirst=True,
+            errors="coerce"
+        )
+
 
     # Drop total_revenue if all zeros
     if "total_revenue" in df.columns:
