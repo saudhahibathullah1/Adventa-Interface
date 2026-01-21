@@ -59,7 +59,7 @@ if uploaded_file is not None:
 
         # preview only first 5 rows
         st.subheader("Cleaned Data Preview (First 5 Rows)")
-        st.dataframe(cleaned_df.head())
+        st.dataframe(cleaned_df.head(15))
 
         # download full dataset
         csv = cleaned_df.to_csv(index=False).encode("utf-8")
