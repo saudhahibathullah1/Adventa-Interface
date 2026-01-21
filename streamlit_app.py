@@ -43,50 +43,52 @@ def clean_ad_data(df):
 
     return df
 
-
 if uploaded_file is not None:
     raw_df = pd.read_csv(uploaded_file)
 
     st.subheader("Raw Data Preview")
     st.dataframe(raw_df.head())
 
-    # ---------- CLEAN DATA BUTTON ----------
-    if st.button("🧹 Clean Dataset"):
-        cleaned_df = clean_ad_data(raw_df)
-        st.session_state["cleaned_df"] = cleaned_df
+    # ---------- CLEAN DATA ----------
+    with st.expander("🧹 Clean Dataset", expanded=False):
+        # button inside the expander triggers cleaning
+        if st.button("Run Clean Dataset"):
+            cleaned_df = clean_ad_data(raw_df)
+            st.session_state["cleaned_df"] = cleaned_df
 
-        st.success("Dataset cleaned successfully ✅")
+            st.success("Dataset cleaned successfully ✅")
 
-        # preview only first 15 rows
-        st.subheader("Cleaned Data Preview (First 15 Rows)")
-        st.dataframe(cleaned_df.head(15))
+            # preview only first 15 rows
+            st.subheader("Cleaned Data Preview (First 15 Rows)")
+            st.dataframe(cleaned_df.head(15))
 
-        # download full dataset
-        csv = cleaned_df.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            label="Download Cleaned Dataset",
-            data=csv,
-            file_name="adventa_cleaned_data.csv",
-            mime="text/csv"
-        )
+            # download full dataset
+            csv = cleaned_df.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                label="Download Cleaned Dataset",
+                data=csv,
+                file_name="adventa_cleaned_data.csv",
+                mime="text/csv"
+            )
 
-    # ---------- ANALYZE BUTTON ----------
-    if st.button("📊 Analyze"):
-        if "cleaned_df" not in st.session_state:
-            st.warning("Please clean the dataset first.")
-        else:
-            df = st.session_state["cleaned_df"]
-
-            required_cols = ["total_revenue", "fb_spend", "instagram_spend", "tiktok_spend"]
-            missing = [c for c in required_cols if c not in df.columns]
-
-            if missing:
-                st.error(f"Missing columns: {', '.join(missing)}")
+    # ---------- ANALYZE ----------
+    with st.expander("📊 Analyze", expanded=False):
+        if st.button("Run Analyze"):
+            if "cleaned_df" not in st.session_state:
+                st.warning("Please clean the dataset first.")
             else:
-                total_revenue = df["total_revenue"].sum()
-                total_ad_spend = df["fb_spend"].sum() + df["instagram_spend"].sum() + df["tiktok_spend"].sum()
-                ad_spend_pct = (total_ad_spend / total_revenue * 100) if total_revenue > 0 else 0
+                df = st.session_state["cleaned_df"]
 
-                st.metric("Total Revenue", f"{total_revenue:,.2f}")
-                st.metric("Total Ad Spend", f"{total_ad_spend:,.2f}")
-                st.metric("% of Revenue Spent on Ads", f"{ad_spend_pct:.2f}%")
+                required_cols = ["total_revenue", "fb_spend", "instagram_spend", "tiktok_spend"]
+                missing = [c for c in required_cols if c not in df.columns]
+
+                if missing:
+                    st.error(f"Missing columns: {', '.join(missing)}")
+                else:
+                    total_revenue = df["total_revenue"].sum()
+                    total_ad_spend = df["fb_spend"].sum() + df["instagram_spend"].sum() + df["tiktok_spend"].sum()
+                    ad_spend_pct = (total_ad_spend / total_revenue * 100) if total_revenue > 0 else 0
+
+                    st.metric("Total Revenue", f"{total_revenue:,.2f}")
+                    st.metric("Total Ad Spend", f"{total_ad_spend:,.2f}")
+                    st.metric("% of Revenue Spent on Ads", f"{ad_spend_pct:.2f}%")
