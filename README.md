@@ -1,6 +1,6 @@
-# 📦 Streamlit App Starter Kit 
+# 📦 Adventa - Multi-Platform Marketing Spend Optimizor
 ```
-⬆️ (Replace above with your app's name)
+⬆️ This project is dedicated to the development of an interactive model that will examine channel performance and go further by providing practical suggestions on how to optimize media spending across several different platformsS
 ```
 
 Description of the app ...
@@ -11,7 +11,7 @@ Description of the app ...
 
 ## GitHub Codespaces
 
-[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/streamlit/app-starter-kit?quickstart=1)
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/ /app-starter-kit?quickstart=1)
 
 ## Section Heading
 
