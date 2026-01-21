@@ -54,21 +54,28 @@ if uploaded_file is not None:
     # -------- CLEAN BUTTON --------
     with col1:
         if st.button("🧹 Clean Dataset"):
-            cleaned_df = clean_ad_data(raw_df)
+    cleaned_df = clean_ad_data(raw_df)
 
-            st.success("Dataset cleaned successfully ✅")
+    # ✅ store full dataset
+    st.session_state["cleaned_df"] = cleaned_df
 
-            st.subheader("Cleaned Data Preview")
-            st.dataframe(cleaned_df.head())
+    st.success("Dataset cleaned successfully ✅")
 
-            csv = cleaned_df.to_csv(index=False).encode("utf-8")
+    # 👀 preview ONLY (separate variable)
+    preview_df = cleaned_df.head(5)
 
-            st.download_button(
-                label="Download Cleaned Dataset",
-                data=csv,
-                file_name="adventa_cleaned_data.csv",
-                mime="text/csv"
-            )
+    st.subheader("Cleaned Data Preview (First 5 Rows)")
+    st.dataframe(preview_df)
+
+    # ⬇️ download FULL dataset
+    csv = st.session_state["cleaned_df"].to_csv(index=False).encode("utf-8")
+
+    st.download_button(
+        label="Download Cleaned Dataset",
+        data=csv,
+        file_name="adventa_cleaned_data.csv",
+        mime="text/csv"
+    )
 
     # -------- ANALYZE BUTTON --------
     with col2:
