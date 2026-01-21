@@ -52,30 +52,29 @@ if uploaded_file is not None:
     col1, col2 = st.columns(2)
 
     # -------- CLEAN BUTTON --------
-    with col1:
-        if st.button("🧹 Clean Dataset"):
-    cleaned_df = clean_ad_data(raw_df)
+with col1:
+    if st.button("🧹 Clean Dataset"):
+        # clean the full dataset
+        cleaned_df = clean_ad_data(raw_df)
+        # store in session for persistence
+        st.session_state["cleaned_df"] = cleaned_df
 
-    # ✅ store full dataset
-    st.session_state["cleaned_df"] = cleaned_df
+        st.success("Dataset cleaned successfully ✅")
 
-    st.success("Dataset cleaned successfully ✅")
+        # preview only first 5 rows
+        preview_df = cleaned_df.head(5)
+        st.subheader("Cleaned Data Preview (First 5 Rows)")
+        st.dataframe(preview_df)
 
-    # 👀 preview ONLY (separate variable)
-    preview_df = cleaned_df.head(5)
+        # download full dataset
+        csv = st.session_state["cleaned_df"].to_csv(index=False).encode("utf-8")
+        st.download_button(
+            label="Download Cleaned Dataset",
+            data=csv,
+            file_name="adventa_cleaned_data.csv",
+            mime="text/csv"
+        )
 
-    st.subheader("Cleaned Data Preview (First 5 Rows)")
-    st.dataframe(preview_df)
-
-    # ⬇️ download FULL dataset
-    csv = st.session_state["cleaned_df"].to_csv(index=False).encode("utf-8")
-
-    st.download_button(
-        label="Download Cleaned Dataset",
-        data=csv,
-        file_name="adventa_cleaned_data.csv",
-        mime="text/csv"
-    )
 
     # -------- ANALYZE BUTTON --------
     with col2:
