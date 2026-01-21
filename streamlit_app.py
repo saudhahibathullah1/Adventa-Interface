@@ -50,15 +50,15 @@ if uploaded_file is not None:
     st.subheader("Raw Data Preview")
     st.dataframe(raw_df.head())
 
-    # ---------- CLEAN DATA ----------
-    with st.expander("🧹 Clean Dataset", expanded=False):
+    # ---------- CLEAN DATA BUTTON ----------
+    if st.button("🧹 Clean Dataset"):
         cleaned_df = clean_ad_data(raw_df)
         st.session_state["cleaned_df"] = cleaned_df
 
         st.success("Dataset cleaned successfully ✅")
 
-        # preview only first 5 rows
-        st.subheader("Cleaned Data Preview (First 5 Rows)")
+        # preview only first 15 rows
+        st.subheader("Cleaned Data Preview (First 15 Rows)")
         st.dataframe(cleaned_df.head(15))
 
         # download full dataset
@@ -70,8 +70,8 @@ if uploaded_file is not None:
             mime="text/csv"
         )
 
-    # ---------- ANALYZE ----------
-    with st.expander("📊 Analyze", expanded=False):
+    # ---------- ANALYZE BUTTON ----------
+    if st.button("📊 Analyze"):
         if "cleaned_df" not in st.session_state:
             st.warning("Please clean the dataset first.")
         else:
