@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 
 st.title("🎈 Adventa")
-st.write("Hello world!")
+st.write("Optimize your advertisement campaign spend!")
 
 st.title("Data Import - Cleaning & Analyzing")
 
