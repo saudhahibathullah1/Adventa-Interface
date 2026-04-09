@@ -164,123 +164,151 @@ if uploaded_file is not None:
                 mime="text/csv"
             )
 
-    # Create two columns for Analyze and Predict buttons
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        # ---------- ANALYZE ----------
-        with st.expander("📊 Analyze", expanded=False):
-            if st.button("Run Analyze"):
-                if "cleaned_df" not in st.session_state:
-                    st.warning("Please clean the dataset first.")
-                else:
-                    df = st.session_state["cleaned_df"]
-
-                    required_cols = ["total_revenue", "fb_spend", "instagram_spend", "tiktok_spend"]
-                    missing = [c for c in required_cols if c not in df.columns]
-
-                    if missing:
-                        st.error(f"Missing columns: {', '.join(missing)}")
-                    else:
-                        total_revenue = df["total_revenue"].sum()
-                        total_ad_spend = df["fb_spend"].sum() + df["instagram_spend"].sum() + df["tiktok_spend"].sum()
-                        ad_spend_pct = (total_ad_spend / total_revenue * 100) if total_revenue > 0 else 0
-
-                        st.metric("Total Revenue", f"{total_revenue:,.2f}")
-                        st.metric("Total Ad Spend", f"{total_ad_spend:,.2f}")
-                        st.metric("% of Revenue Spent on Ads", f"{ad_spend_pct:.2f}%")
-                        
-                        # Show additional metrics
-                        if len(df) > 0:
-                            avg_daily_revenue = total_revenue / len(df)
-                            st.metric("Average Daily Revenue", f"{avg_daily_revenue:,.2f}")
-    
-    with col2:
-        # ---------- PREDICT ----------
-        with st.expander("🎯 Predict Revenue", expanded=False):
+    # ---------- ANALYZE SECTION (Top) ----------
+    with st.expander("📊 Analyze", expanded=False):
+        if st.button("Run Analyze"):
             if "cleaned_df" not in st.session_state:
-                st.warning("Please clean the dataset first to train the model.")
+                st.warning("Please clean the dataset first.")
             else:
-                st.write("Enter ad spend values to predict revenue:")
-                
-                # Input fields for ad spend
+                df = st.session_state["cleaned_df"]
+
+                required_cols = ["total_revenue", "fb_spend", "instagram_spend", "tiktok_spend"]
+                missing = [c for c in required_cols if c not in df.columns]
+
+                if missing:
+                    st.error(f"Missing columns: {', '.join(missing)}")
+                else:
+                    total_revenue = df["total_revenue"].sum()
+                    total_ad_spend = df["fb_spend"].sum() + df["instagram_spend"].sum() + df["tiktok_spend"].sum()
+                    ad_spend_pct = (total_ad_spend / total_revenue * 100) if total_revenue > 0 else 0
+
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Total Revenue", f"{total_revenue:,.2f}")
+                    with col2:
+                        st.metric("Total Ad Spend", f"{total_ad_spend:,.2f}")
+                    with col3:
+                        st.metric("% of Revenue Spent on Ads", f"{ad_spend_pct:.2f}%")
+                    
+                    # Show additional metrics
+                    if len(df) > 0:
+                        avg_daily_revenue = total_revenue / len(df)
+                        st.metric("Average Daily Revenue", f"{avg_daily_revenue:,.2f}")
+                    
+                    # Show spend breakdown
+                    st.subheader("Ad Spend Breakdown")
+                    spend_data = {
+                        "Platform": ["Facebook", "Instagram", "TikTok"],
+                        "Total Spend": [df["fb_spend"].sum(), df["instagram_spend"].sum(), df["tiktok_spend"].sum()]
+                    }
+                    spend_df = pd.DataFrame(spend_data)
+                    st.bar_chart(spend_df.set_index("Platform"))
+
+    # ---------- PREDICT SECTION (Bottom) ----------
+    with st.expander("🎯 Predict Revenue", expanded=False):
+        if "cleaned_df" not in st.session_state:
+            st.warning("Please clean the dataset first to train the model.")
+        else:
+            st.write("Enter ad spend values to predict revenue:")
+            
+            # Create three columns for input fields
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
                 fb_spend = st.number_input("Facebook Spend ($)", min_value=0.0, value=1000.0, step=100.0, key="fb_input")
+            with col2:
                 instagram_spend = st.number_input("Instagram Spend ($)", min_value=0.0, value=1000.0, step=100.0, key="insta_input")
+            with col3:
                 tiktok_spend = st.number_input("TikTok Spend ($)", min_value=0.0, value=1000.0, step=100.0, key="tiktok_input")
+            
+            if st.button("Predict Revenue", type="primary"):
+                df = st.session_state["cleaned_df"]
+                model_type = st.session_state.get("model_type", "simple")
                 
-                if st.button("Predict Revenue"):
-                    df = st.session_state["cleaned_df"]
-                    model_type = st.session_state.get("model_type", "simple")
+                if model_type == "xgboost" and "trained_model" in st.session_state:
+                    # Use XGBoost model
+                    model = st.session_state["trained_model"]
                     
-                    if model_type == "xgboost" and "trained_model" in st.session_state:
-                        # Use XGBoost model
-                        model = st.session_state["trained_model"]
+                    # Calculate adstock values using last values from dataset
+                    if len(df) > 0:
+                        # Get last adstock values from training data
+                        last_fb_adstock = adstock(df['fb_spend'].values)[-1] if 'fb_spend' in df.columns else 0
+                        last_insta_adstock = adstock(df['instagram_spend'].values)[-1] if 'instagram_spend' in df.columns else 0
+                        last_tiktok_adstock = adstock(df['tiktok_spend'].values)[-1] if 'tiktok_spend' in df.columns else 0
                         
-                        # Calculate adstock values using last values from dataset
-                        if len(df) > 0:
-                            # Get last adstock values from training data
-                            last_fb_adstock = adstock(df['fb_spend'].values)[-1] if 'fb_spend' in df.columns else 0
-                            last_insta_adstock = adstock(df['instagram_spend'].values)[-1] if 'instagram_spend' in df.columns else 0
-                            last_tiktok_adstock = adstock(df['tiktok_spend'].values)[-1] if 'tiktok_spend' in df.columns else 0
-                            
-                            # Apply adstock transformation with decay
-                            decay_rate = 0.5
-                            fb_adstock_pred = fb_spend + decay_rate * last_fb_adstock
-                            insta_adstock_pred = instagram_spend + decay_rate * last_insta_adstock
-                            tiktok_adstock_pred = tiktok_spend + decay_rate * last_tiktok_adstock
-                        else:
-                            fb_adstock_pred = fb_spend
-                            insta_adstock_pred = instagram_spend
-                            tiktok_adstock_pred = tiktok_spend
-                        
-                        # Prepare features for prediction
-                        features = pd.DataFrame([[fb_adstock_pred, insta_adstock_pred, tiktok_adstock_pred]], 
-                                               columns=['fb_adstock', 'insta_adstock', 'tiktok_adstock'])
-                        
-                        # Make prediction
-                        predicted_revenue = model.predict(features)[0]
-                        prediction_method = "XGBoost Model"
-                        
-                        # Optional: Show adstock values used
-                        show_details = True
-                        
+                        # Apply adstock transformation with decay
+                        decay_rate = 0.5
+                        fb_adstock_pred = fb_spend + decay_rate * last_fb_adstock
+                        insta_adstock_pred = instagram_spend + decay_rate * last_insta_adstock
+                        tiktok_adstock_pred = tiktok_spend + decay_rate * last_tiktok_adstock
                     else:
-                        # Use simple prediction method
-                        predicted_revenue, roi_ratio = simple_predict(df, fb_spend, instagram_spend, tiktok_spend)
-                        prediction_method = "Simplified Model (Based on Historical ROI)"
-                        show_details = False
+                        fb_adstock_pred = fb_spend
+                        insta_adstock_pred = instagram_spend
+                        tiktok_adstock_pred = tiktok_spend
                     
-                    # Display results
-                    st.success(f"### Predicted Revenue: ${predicted_revenue:,.2f}")
-                    st.caption(f"*Prediction method: {prediction_method}*")
+                    # Prepare features for prediction
+                    features = pd.DataFrame([[fb_adstock_pred, insta_adstock_pred, tiktok_adstock_pred]], 
+                                           columns=['fb_adstock', 'insta_adstock', 'tiktok_adstock'])
                     
-                    # Calculate ROI
-                    total_ad_spend = fb_spend + instagram_spend + tiktok_spend
-                    roi = ((predicted_revenue - total_ad_spend) / total_ad_spend * 100) if total_ad_spend > 0 else 0
+                    # Make prediction
+                    predicted_revenue = model.predict(features)[0]
+                    prediction_method = "XGBoost Model"
+                    show_details = True
                     
-                    col_metrics1, col_metrics2 = st.columns(2)
-                    with col_metrics1:
-                        st.metric("Total Ad Spend", f"${total_ad_spend:,.2f}")
-                    with col_metrics2:
-                        st.metric("ROI", f"{roi:.1f}%", 
-                                 delta="Positive" if roi > 0 else "Negative",
-                                 delta_color="normal" if roi > 0 else "inverse")
-                    
-                    # Show warning if ROI is negative
-                    if roi < 0:
-                        st.warning("⚠️ Negative ROI predicted. Consider adjusting your ad spend allocation.")
-                    elif roi > 100:
-                        st.info("🎉 Excellent ROI predicted!")
-                    
-                    # Show additional insights
-                    if model_type == "simple":
-                        st.info(f"💡 Based on historical data, every $1 spent on ads generates ${roi_ratio:.2f} in revenue.")
-                    
-                    # Show calculation details for XGBoost
-                    if show_details:
-                        with st.expander("Show calculation details"):
-                            st.write("**Adstock Values Used for Prediction:**")
-                            st.write(f"Facebook Adstock: ${fb_adstock_pred:,.2f}")
-                            st.write(f"Instagram Adstock: ${insta_adstock_pred:,.2f}")
-                            st.write(f"TikTok Adstock: ${tiktok_adstock_pred:,.2f}")
-                            st.write("*(Adstock accounts for carryover effect from previous spend)*")
+                else:
+                    # Use simple prediction method
+                    predicted_revenue, roi_ratio = simple_predict(df, fb_spend, instagram_spend, tiktok_spend)
+                    prediction_method = "Simplified Model (Based on Historical ROI)"
+                    show_details = False
+                
+                # Display results in a nice container
+                st.markdown("---")
+                st.subheader("📈 Prediction Results")
+                
+                # Create metrics row
+                col1, col2, col3 = st.columns(3)
+                
+                total_ad_spend = fb_spend + instagram_spend + tiktok_spend
+                roi = ((predicted_revenue - total_ad_spend) / total_ad_spend * 100) if total_ad_spend > 0 else 0
+                
+                with col1:
+                    st.metric("Total Ad Spend", f"${total_ad_spend:,.2f}")
+                with col2:
+                    st.metric("Predicted Revenue", f"${predicted_revenue:,.2f}", 
+                             delta=f"${predicted_revenue - total_ad_spend:,.2f}")
+                with col3:
+                    st.metric("ROI", f"{roi:.1f}%", 
+                             delta="Positive" if roi > 0 else "Negative",
+                             delta_color="normal" if roi > 0 else "inverse")
+                
+                # Show warning or success message
+                if roi < 0:
+                    st.error("⚠️ Negative ROI predicted. Consider adjusting your ad spend allocation.")
+                elif roi > 100:
+                    st.success("🎉 Excellent ROI predicted!")
+                elif roi > 50:
+                    st.info("✅ Good ROI predicted!")
+                
+                st.caption(f"*Prediction method: {prediction_method}*")
+                
+                # Show additional insights
+                if model_type == "simple":
+                    st.info(f"💡 Based on historical data, every $1 spent on ads generates ${roi_ratio:.2f} in revenue.")
+                
+                # Show calculation details for XGBoost
+                if show_details:
+                    with st.expander("🔍 Show calculation details"):
+                        st.write("**Adstock Values Used for Prediction:**")
+                        st.write(f"Facebook Adstock: ${fb_adstock_pred:,.2f}")
+                        st.write(f"Instagram Adstock: ${insta_adstock_pred:,.2f}")
+                        st.write(f"TikTok Adstock: ${tiktok_adstock_pred:,.2f}")
+                        st.write("*(Adstock accounts for carryover effect from previous spend)*")
+                        
+                        # Show feature importance if available
+                        if hasattr(model, 'feature_importances_'):
+                            st.write("**Feature Importance:**")
+                            importance_df = pd.DataFrame({
+                                'Feature': ['Facebook', 'Instagram', 'TikTok'],
+                                'Importance': model.feature_importances_
+                            })
+                            st.bar_chart(importance_df.set_index('Feature'))
