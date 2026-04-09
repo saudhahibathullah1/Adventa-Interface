@@ -304,60 +304,78 @@ if uploaded_file is not None:
                     st.write("- Category dummies account for campaign type differences")
 
     # ---------- ANALYZE SECTION ----------
-    with st.expander("📊 Analyze", expanded=False):
-        if st.button("Run Analyze"):
-            if "cleaned_df" not in st.session_state:
-                st.warning("Please clean the dataset first.")
-            else:
-                df = st.session_state["cleaned_df"]
+with st.expander("📊 Analyze", expanded=False):
+    if st.button("Run Analyze"):
+        if "cleaned_df" not in st.session_state or "trained_model" not in st.session_state:
+            st.warning("Please clean the dataset and train the model first.")
+        else:
+            df = st.session_state["cleaned_df"]
+            model = st.session_state["trained_model"]
+            feature_cols = st.session_state["feature_cols"]
 
-                required_cols = ["total_revenue", "fb_spend", "instagram_spend", "tiktok_spend"]
-                missing = [c for c in required_cols if c not in df.columns]
+            # ---------- KPI CARDS ----------
+            total_revenue = df["total_revenue"].sum()
+            total_ad_spend = df[["fb_spend","instagram_spend","tiktok_spend"]].sum().sum()
+            total_campaigns = len(df)
 
-                if missing:
-                    st.error(f"Missing columns: {', '.join(missing)}")
-                else:
-                    # Key metrics
-                    total_revenue = df["total_revenue"].sum()
-                    total_ad_spend = df["fb_spend"].sum() + df["instagram_spend"].sum() + df["tiktok_spend"].sum()
-                    ad_spend_pct = (total_ad_spend / total_revenue * 100) if total_revenue > 0 else 0
-                    overall_roas = total_revenue / total_ad_spend if total_ad_spend > 0 else 0
-
-                    col1, col2, col3, col4 = st.columns(4)
-                    with col1:
-                        st.metric("Total Revenue", f"${total_revenue:,.2f}")
-                    with col2:
-                        st.metric("Total Ad Spend", f"${total_ad_spend:,.2f}")
-                    with col3:
-                        st.metric("Ad Spend % of Revenue", f"{ad_spend_pct:.2f}%")
-                    with col4:
-                        st.metric("Overall ROAS", f"{overall_roas:.2f}x")
-                    
-                    # Spend breakdown
-                    st.subheader("💰 Ad Spend by Channel")
-                    spend_data = {
-                        "Platform": ["Facebook", "Instagram", "TikTok"],
-                        "Total Spend": [df["fb_spend"].sum(), df["instagram_spend"].sum(), df["tiktok_spend"].sum()]
-                    }
-                    spend_df = pd.DataFrame(spend_data)
-                    st.bar_chart(spend_df.set_index("Platform"))
-                    
-                    # Revenue by category (if available)
-                    if "category" in df.columns:
-                        st.subheader("📊 Revenue by Campaign Category")
-                        category_revenue = df.groupby("category")["total_revenue"].sum().sort_values(ascending=False)
-                        st.dataframe(category_revenue)
-                    
-                    # Revenue trend over time
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("💰 Total Ad Spend", f"${total_ad_spend:,.2f}")
+                if st.checkbox("View spend by channel", key="show_channel_spend"):
+                    channel_spend = df[["fb_spend","instagram_spend","tiktok_spend"]].sum().to_frame(name="Total Spend")
+                    st.dataframe(channel_spend)
+            with col2:
+                st.metric("📊 Total Revenue", f"${total_revenue:,.2f}")
+                if st.checkbox("View revenue timeline", key="show_revenue_timeline"):
                     if "date" in df.columns:
-                        st.subheader("📈 Revenue Trend Over Time")
                         revenue_trend = df.groupby("date")["total_revenue"].sum().reset_index()
                         st.line_chart(revenue_trend.set_index("date"))
-                    
-                    # Show model performance if trained
-                    if st.session_state.get("model_type") == "lasso":
-                        st.subheader("🧠 Model Performance")
-                        st.metric("R² Score", f"{st.session_state.get('r2_score', 0):.4f}")
-                        st.metric("Mean Absolute Error", f"${st.session_state.get('mae', 0):,.2f}")
-                        if st.session_state.get('r2_score', 0) >= 0.9:
-                            st.success("✅ Model is highly accurate (R² > 0.9)")
+                if st.checkbox("View revenue by category", key="show_revenue_category"):
+                    if "category" in df.columns:
+                        category_revenue = df.groupby("category")["total_revenue"].sum().sort_values(ascending=False)
+                        st.dataframe(category_revenue)
+            with col3:
+                st.metric("📈 Total Campaigns", total_campaigns)
+
+            # ---------- ACTUAL VS PREDICTED ----------
+            st.subheader("Actual vs Predicted Revenue Over Time")
+            if "date" in df.columns:
+                X = df[feature_cols]
+                y_actual = df["total_revenue"]
+                y_predicted = model.predict(X)
+
+                pred_df = df[["date"]].copy()
+                pred_df["Actual Revenue"] = y_actual
+                pred_df["Predicted Revenue"] = y_predicted
+
+                st.line_chart(pred_df.set_index("date"))
+
+            # ---------- HEATMAP: Revenue by Category and Channel ----------
+            st.subheader("Heatmap – Revenue by Campaign Category & Channel")
+            if "category" in df.columns:
+                # Option to filter by timeframe
+                timeframe = st.selectbox("Select timeframe for heatmap", 
+                                         ["All time","Past Week","Past Month","Past 6 Months","Past Year"])
+                filtered_df = df.copy()
+                if "date" in df.columns:
+                    today = pd.to_datetime("today")
+                    if timeframe == "Past Week":
+                        filtered_df = df[df["date"] >= today - pd.Timedelta(days=7)]
+                    elif timeframe == "Past Month":
+                        filtered_df = df[df["date"] >= today - pd.Timedelta(days=30)]
+                    elif timeframe == "Past 6 Months":
+                        filtered_df = df[df["date"] >= today - pd.Timedelta(days=182)]
+                    elif timeframe == "Past Year":
+                        filtered_df = df[df["date"] >= today - pd.Timedelta(days=365)]
+
+                # Pivot table for heatmap
+                heatmap_data = filtered_df.groupby("category")[["fb_spend","instagram_spend","tiktok_spend"]].sum()
+                st.dataframe(heatmap_data)
+
+                # Optional: colored heatmap
+                import seaborn as sns
+                import matplotlib.pyplot as plt
+
+                fig, ax = plt.subplots(figsize=(8,4))
+                sns.heatmap(heatmap_data, annot=True, fmt=".0f", cmap="YlGnBu", ax=ax)
+                st.pyplot(fig)
