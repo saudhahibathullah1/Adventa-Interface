@@ -1,14 +1,9 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-
-# Try to import XGBoost with error handling
-try:
-    from xgboost import XGBRegressor
-    XGBOOST_AVAILABLE = True
-except ImportError:
-    XGBOOST_AVAILABLE = False
-    st.warning("XGBoost not installed. Please install it using: pip install xgboost")
+from sklearn.linear_model import Lasso
+from sklearn.metrics import r2_score, mean_absolute_error
+from sklearn.model_selection import train_test_split
 
 st.title("🎈 Adventa")
 st.write("Optimize your advertisement campaign spend!")
@@ -21,7 +16,7 @@ uploaded_file = st.file_uploader(
 )
 
 def adstock(x, decay=0.5):
-    """Calculate adstock transformation"""
+    """Calculate adstock transformation for carryover effect"""
     result = []
     for i, val in enumerate(x):
         if i == 0:
@@ -62,9 +57,7 @@ def clean_ad_data(df):
     return df
 
 def train_prediction_model(df):
-    """Train XGBoost model with adstock transformation"""
-    if not XGBOOST_AVAILABLE:
-        return None, "XGBoost is not installed. Please install it using: pip install xgboost scikit-learn"
+    """Train Lasso Regression model with adstock transformation and category dummies"""
     
     # Required columns
     required_cols = ["total_revenue", "fb_spend", "instagram_spend", "tiktok_spend"]
@@ -74,52 +67,106 @@ def train_prediction_model(df):
         return None, f"Missing columns: {', '.join(missing)}"
     
     # Check if we have enough data
-    if len(df) < 3:
-        return None, "Not enough data to train model. Need at least 3 rows of data."
+    if len(df) < 5:
+        return None, "Not enough data to train model. Need at least 5 rows of data."
     
     try:
-        # Create adstock features
+        # Create a copy for modeling
         df_model = df.copy()
+        
+        # Create adstock features for each channel
         df_model['fb_adstock'] = adstock(df_model['fb_spend'].values)
         df_model['insta_adstock'] = adstock(df_model['instagram_spend'].values)
         df_model['tiktok_adstock'] = adstock(df_model['tiktok_spend'].values)
         
-        # Prepare features and target
-        feature_cols = ['fb_adstock', 'insta_adstock', 'tiktok_adstock']
+        # Create one-hot encoding for 'category' column if it exists
+        if 'category' in df_model.columns:
+            df_model = pd.get_dummies(df_model, columns=['category'], drop_first=True)
+        
+        # Define feature columns (exclude target and date)
+        feature_cols = [col for col in df_model.columns if col not in ['total_revenue', 'date']]
         X = df_model[feature_cols]
         y = df_model['total_revenue']
         
-        # Train XGBoost model with optimal hyperparameters
-        model = XGBRegressor(
-            n_estimators=100,
-            max_depth=2,
-            learning_rate=0.2,
-            subsample=0.5,
-            colsample_bytree=0.6,
-            random_state=30
+        # Train-test split (keeping time order with shuffle=False)
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.2, shuffle=False
         )
         
-        model.fit(X, y)
-        return model, None
+        # Train Lasso Regression model
+        model = Lasso(alpha=1.0, random_state=42)
+        model.fit(X_train, y_train)
+        
+        # Evaluate model
+        y_pred = model.predict(X_test)
+        r2 = r2_score(y_test, y_pred)
+        mae = mean_absolute_error(y_test, y_pred)
+        
+        # Store model info in session state
+        st.session_state["r2_score"] = r2
+        st.session_state["mae"] = mae
+        st.session_state["feature_cols"] = feature_cols
+        st.session_state["test_indices"] = X_test.index.tolist()
+        
+        return model, None, r2, mae
+        
     except Exception as e:
-        return None, f"Error training model: {str(e)}"
+        return None, f"Error training model: {str(e)}", None, None
 
-def simple_predict(df, fb_spend, instagram_spend, tiktok_spend):
-    """Fallback prediction method using linear regression if XGBoost is not available"""
-    # Calculate average revenue per ad spend ratio
-    total_ad_spend_hist = (df['fb_spend'] + df['instagram_spend'] + df['tiktok_spend']).sum()
-    total_revenue_hist = df['total_revenue'].sum()
+def predict_revenue_lasso(df, model, fb_spend, instagram_spend, tiktok_spend, category_value=None):
+    """Make prediction using trained Lasso model with adstock and category"""
     
-    if total_ad_spend_hist > 0:
-        roi_ratio = total_revenue_hist / total_ad_spend_hist
+    # Get last adstock values from historical data
+    if len(df) > 0:
+        last_fb_adstock = adstock(df['fb_spend'].values)[-1] if 'fb_spend' in df.columns else 0
+        last_insta_adstock = adstock(df['instagram_spend'].values)[-1] if 'instagram_spend' in df.columns else 0
+        last_tiktok_adstock = adstock(df['tiktok_spend'].values)[-1] if 'tiktok_spend' in df.columns else 0
     else:
-        roi_ratio = 1
+        last_fb_adstock = 0
+        last_insta_adstock = 0
+        last_tiktok_adstock = 0
     
-    # Predict based on historical ROI
-    new_total_spend = fb_spend + instagram_spend + tiktok_spend
-    predicted_revenue = new_total_spend * roi_ratio
+    # Apply adstock with decay (0.5)
+    decay_rate = 0.5
+    fb_adstock_pred = fb_spend + decay_rate * last_fb_adstock
+    insta_adstock_pred = instagram_spend + decay_rate * last_insta_adstock
+    tiktok_adstock_pred = tiktok_spend + decay_rate * last_tiktok_adstock
     
-    return predicted_revenue, roi_ratio
+    # Create base prediction row
+    prediction_row = {
+        'fb_adstock': fb_adstock_pred,
+        'insta_adstock': insta_adstock_pred,
+        'tiktok_adstock': tiktok_adstock_pred
+    }
+    
+    # Add original spend columns (some models may use them)
+    prediction_row['fb_spend'] = fb_spend
+    prediction_row['instagram_spend'] = instagram_spend
+    prediction_row['tiktok_spend'] = tiktok_spend
+    
+    # Add category dummies if category exists in training
+    if category_value and 'category' in df.columns:
+        # Get unique categories from training data
+        unique_cats = df['category'].unique()
+        for cat in unique_cats:
+            dummy_col = f'category_{cat}'
+            if dummy_col in st.session_state.get("feature_cols", []):
+                # Set 1 for selected category, 0 for others
+                prediction_row[dummy_col] = 1 if cat == category_value else 0
+    
+    # Ensure all feature columns are present
+    feature_cols = st.session_state.get("feature_cols", [])
+    for col in feature_cols:
+        if col not in prediction_row:
+            prediction_row[col] = 0
+    
+    # Create DataFrame for prediction
+    features_df = pd.DataFrame([prediction_row])[feature_cols]
+    
+    # Make prediction
+    predicted_revenue = model.predict(features_df)[0]
+    
+    return predicted_revenue
 
 if uploaded_file is not None:
     raw_df = pd.read_csv(uploaded_file)
@@ -129,33 +176,42 @@ if uploaded_file is not None:
 
     # ---------- CLEAN DATA ----------
     with st.expander("🧹 Clean Dataset", expanded=False):
-        # button inside the expander triggers cleaning
         if st.button("Run Clean Dataset"):
             cleaned_df = clean_ad_data(raw_df)
             st.session_state["cleaned_df"] = cleaned_df
             
-            # Train model after cleaning
-            if XGBOOST_AVAILABLE:
-                model, error = train_prediction_model(cleaned_df)
-                if model:
-                    st.session_state["trained_model"] = model
-                    st.session_state["model_type"] = "xgboost"
-                    st.success("Dataset cleaned and XGBoost model trained successfully ✅")
+            # Train Lasso model after cleaning
+            model, error, r2, mae = train_prediction_model(cleaned_df)
+            
+            if model:
+                st.session_state["trained_model"] = model
+                st.session_state["model_type"] = "lasso"
+                st.success(f"Dataset cleaned and Lasso Regression model trained successfully ✅")
+                st.info(f"📊 Model Performance: R² Score = {r2:.4f} | MAE = ${mae:,.2f}")
+                
+                # Show model quality indicator
+                if r2 >= 0.9:
+                    st.balloons()
+                    st.success("🎯 Excellent model! R² > 0.9 - Very strong predictive power")
+                elif r2 >= 0.7:
+                    st.info("👍 Good model - Ready for predictions")
                 else:
-                    st.error(f"Model training failed: {error}")
-                    # Use simple prediction as fallback
-                    st.session_state["model_type"] = "simple"
-                    st.info("Using simplified prediction model as fallback.")
+                    st.warning("⚠️ Model could be improved - Consider adding more features or data")
             else:
-                st.session_state["model_type"] = "simple"
-                st.info("XGBoost not available. Using simplified prediction model.")
-                st.success("Dataset cleaned successfully ✅")
-
-            # preview only first 15 rows
+                st.error(f"Model training failed: {error}")
+                st.session_state["model_type"] = "none"
+            
+            # Preview cleaned data
             st.subheader("Cleaned Data Preview (First 15 Rows)")
             st.dataframe(cleaned_df.head(15))
-
-            # download full dataset
+            
+            # Show category breakdown if available
+            if 'category' in cleaned_df.columns:
+                st.subheader("📁 Category Distribution")
+                category_counts = cleaned_df['category'].value_counts()
+                st.dataframe(category_counts)
+            
+            # Download button
             csv = cleaned_df.to_csv(index=False).encode("utf-8")
             st.download_button(
                 label="Download Cleaned Dataset",
@@ -164,14 +220,20 @@ if uploaded_file is not None:
                 mime="text/csv"
             )
 
-    # ---------- PREDICT SECTION (Top) ----------
+    # ---------- PREDICT SECTION ----------
     with st.expander("🎯 Predict Revenue", expanded=False):
         if "cleaned_df" not in st.session_state:
             st.warning("Please clean the dataset first to train the model.")
+        elif st.session_state.get("model_type") != "lasso":
+            st.warning("Model not trained successfully. Please re-upload and clean data.")
         else:
             st.write("Enter ad spend values to predict revenue:")
             
-            # Create three columns for input fields
+            # Get category options if available
+            df = st.session_state["cleaned_df"]
+            has_category = 'category' in df.columns
+            
+            # Input columns
             col1, col2, col3 = st.columns(3)
             
             with col1:
@@ -181,56 +243,29 @@ if uploaded_file is not None:
             with col3:
                 tiktok_spend = st.number_input("TikTok Spend ($)", min_value=0.0, value=1000.0, step=100.0, key="tiktok_input")
             
+            # Category selector (if available)
+            category_value = None
+            if has_category:
+                categories = df['category'].unique().tolist()
+                category_value = st.selectbox("Campaign Category", categories)
+            
             if st.button("Predict Revenue", type="primary"):
-                df = st.session_state["cleaned_df"]
-                model_type = st.session_state.get("model_type", "simple")
+                model = st.session_state["trained_model"]
                 
-                if model_type == "xgboost" and "trained_model" in st.session_state:
-                    # Use XGBoost model
-                    model = st.session_state["trained_model"]
-                    
-                    # Calculate adstock values using last values from dataset
-                    if len(df) > 0:
-                        # Get last adstock values from training data
-                        last_fb_adstock = adstock(df['fb_spend'].values)[-1] if 'fb_spend' in df.columns else 0
-                        last_insta_adstock = adstock(df['instagram_spend'].values)[-1] if 'instagram_spend' in df.columns else 0
-                        last_tiktok_adstock = adstock(df['tiktok_spend'].values)[-1] if 'tiktok_spend' in df.columns else 0
-                        
-                        # Apply adstock transformation with decay
-                        decay_rate = 0.5
-                        fb_adstock_pred = fb_spend + decay_rate * last_fb_adstock
-                        insta_adstock_pred = instagram_spend + decay_rate * last_insta_adstock
-                        tiktok_adstock_pred = tiktok_spend + decay_rate * last_tiktok_adstock
-                    else:
-                        fb_adstock_pred = fb_spend
-                        insta_adstock_pred = instagram_spend
-                        tiktok_adstock_pred = tiktok_spend
-                    
-                    # Prepare features for prediction
-                    features = pd.DataFrame([[fb_adstock_pred, insta_adstock_pred, tiktok_adstock_pred]], 
-                                           columns=['fb_adstock', 'insta_adstock', 'tiktok_adstock'])
-                    
-                    # Make prediction
-                    predicted_revenue = model.predict(features)[0]
-                    prediction_method = "XGBoost Model"
-                    show_details = True
-                    
-                else:
-                    # Use simple prediction method
-                    predicted_revenue, roi_ratio = simple_predict(df, fb_spend, instagram_spend, tiktok_spend)
-                    prediction_method = "Simplified Model (Based on Historical ROI)"
-                    show_details = False
+                # Make prediction
+                predicted_revenue = predict_revenue_lasso(
+                    df, model, fb_spend, instagram_spend, tiktok_spend, category_value
+                )
                 
-                # Display results in a nice container
-                st.markdown("---")
-                st.subheader("📈 Prediction Results")
-                
-                # Create metrics row
-                col1, col2, col3 = st.columns(3)
-                
+                # Calculate metrics
                 total_ad_spend = fb_spend + instagram_spend + tiktok_spend
                 roi = ((predicted_revenue - total_ad_spend) / total_ad_spend * 100) if total_ad_spend > 0 else 0
                 
+                # Display results
+                st.markdown("---")
+                st.subheader("📈 Prediction Results")
+                
+                col1, col2, col3 = st.columns(3)
                 with col1:
                     st.metric("Total Ad Spend", f"${total_ad_spend:,.2f}")
                 with col2:
@@ -241,7 +276,7 @@ if uploaded_file is not None:
                              delta="Positive" if roi > 0 else "Negative",
                              delta_color="normal" if roi > 0 else "inverse")
                 
-                # Show warning or success message
+                # ROI feedback
                 if roi < 0:
                     st.error("⚠️ Negative ROI predicted. Consider adjusting your ad spend allocation.")
                 elif roi > 100:
@@ -249,31 +284,26 @@ if uploaded_file is not None:
                 elif roi > 50:
                     st.info("✅ Good ROI predicted!")
                 
-                st.caption(f"*Prediction method: {prediction_method}*")
+                # Show model quality badge
+                r2_score_val = st.session_state.get("r2_score", 0)
+                st.caption(f"🤖 Lasso Regression Model • R² Score: {r2_score_val:.3f}")
                 
-                # Show additional insights
-                if model_type == "simple":
-                    st.info(f"💡 Based on historical data, every $1 spent on ads generates ${roi_ratio:.2f} in revenue.")
-                
-                # Show calculation details for XGBoost
-                if show_details:
-                    with st.expander("🔍 Show calculation details"):
-                        st.write("**Adstock Values Used for Prediction:**")
-                        st.write(f"Facebook Adstock: ${fb_adstock_pred:,.2f}")
-                        st.write(f"Instagram Adstock: ${insta_adstock_pred:,.2f}")
-                        st.write(f"TikTok Adstock: ${tiktok_adstock_pred:,.2f}")
-                        st.write("*(Adstock accounts for carryover effect from previous spend)*")
-                        
-                        # Show feature importance if available
-                        if hasattr(model, 'feature_importances_'):
-                            st.write("**Feature Importance:**")
-                            importance_df = pd.DataFrame({
-                                'Feature': ['Facebook', 'Instagram', 'TikTok'],
-                                'Importance': model.feature_importances_
-                            })
-                            st.bar_chart(importance_df.set_index('Feature'))
+                # Show details
+                with st.expander("🔍 Show calculation details"):
+                    st.write("**Adstock Values Used (carryover effect):**")
+                    st.write(f"Facebook Adstock: ${fb_spend + 0.5 * adstock(df['fb_spend'].values)[-1] if len(df) > 0 else fb_spend:,.2f}")
+                    st.write(f"Instagram Adstock: ${instagram_spend + 0.5 * adstock(df['instagram_spend'].values)[-1] if len(df) > 0 else instagram_spend:,.2f}")
+                    st.write(f"TikTok Adstock: ${tiktok_spend + 0.5 * adstock(df['tiktok_spend'].values)[-1] if len(df) > 0 else tiktok_spend:,.2f}")
+                    
+                    if has_category:
+                        st.write(f"**Selected Category:** {category_value}")
+                    
+                    st.write("**Model Interpretation:**")
+                    st.write("- Lasso Regression automatically selects important features")
+                    st.write("- Adstock captures delayed/recurring effects of ad spend")
+                    st.write("- Category dummies account for campaign type differences")
 
-    # ---------- ANALYZE SECTION (Bottom) ----------
+    # ---------- ANALYZE SECTION ----------
     with st.expander("📊 Analyze", expanded=False):
         if st.button("Run Analyze"):
             if "cleaned_df" not in st.session_state:
@@ -287,25 +317,24 @@ if uploaded_file is not None:
                 if missing:
                     st.error(f"Missing columns: {', '.join(missing)}")
                 else:
+                    # Key metrics
                     total_revenue = df["total_revenue"].sum()
                     total_ad_spend = df["fb_spend"].sum() + df["instagram_spend"].sum() + df["tiktok_spend"].sum()
                     ad_spend_pct = (total_ad_spend / total_revenue * 100) if total_revenue > 0 else 0
+                    overall_roas = total_revenue / total_ad_spend if total_ad_spend > 0 else 0
 
-                    col1, col2, col3 = st.columns(3)
+                    col1, col2, col3, col4 = st.columns(4)
                     with col1:
-                        st.metric("Total Revenue", f"{total_revenue:,.2f}")
+                        st.metric("Total Revenue", f"${total_revenue:,.2f}")
                     with col2:
-                        st.metric("Total Ad Spend", f"{total_ad_spend:,.2f}")
+                        st.metric("Total Ad Spend", f"${total_ad_spend:,.2f}")
                     with col3:
-                        st.metric("% of Revenue Spent on Ads", f"{ad_spend_pct:.2f}%")
+                        st.metric("Ad Spend % of Revenue", f"{ad_spend_pct:.2f}%")
+                    with col4:
+                        st.metric("Overall ROAS", f"{overall_roas:.2f}x")
                     
-                    # Show additional metrics
-                    if len(df) > 0:
-                        avg_daily_revenue = total_revenue / len(df)
-                        st.metric("Average Daily Revenue", f"{avg_daily_revenue:,.2f}")
-                    
-                    # Show spend breakdown
-                    st.subheader("Ad Spend Breakdown")
+                    # Spend breakdown
+                    st.subheader("💰 Ad Spend by Channel")
                     spend_data = {
                         "Platform": ["Facebook", "Instagram", "TikTok"],
                         "Total Spend": [df["fb_spend"].sum(), df["instagram_spend"].sum(), df["tiktok_spend"].sum()]
@@ -313,8 +342,22 @@ if uploaded_file is not None:
                     spend_df = pd.DataFrame(spend_data)
                     st.bar_chart(spend_df.set_index("Platform"))
                     
-                    # Show revenue trend if date column exists
+                    # Revenue by category (if available)
+                    if "category" in df.columns:
+                        st.subheader("📊 Revenue by Campaign Category")
+                        category_revenue = df.groupby("category")["total_revenue"].sum().sort_values(ascending=False)
+                        st.dataframe(category_revenue)
+                    
+                    # Revenue trend over time
                     if "date" in df.columns:
-                        st.subheader("Revenue Trend Over Time")
+                        st.subheader("📈 Revenue Trend Over Time")
                         revenue_trend = df.groupby("date")["total_revenue"].sum().reset_index()
                         st.line_chart(revenue_trend.set_index("date"))
+                    
+                    # Show model performance if trained
+                    if st.session_state.get("model_type") == "lasso":
+                        st.subheader("🧠 Model Performance")
+                        st.metric("R² Score", f"{st.session_state.get('r2_score', 0):.4f}")
+                        st.metric("Mean Absolute Error", f"${st.session_state.get('mae', 0):,.2f}")
+                        if st.session_state.get('r2_score', 0) >= 0.9:
+                            st.success("✅ Model is highly accurate (R² > 0.9)")
