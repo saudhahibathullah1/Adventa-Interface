@@ -441,100 +441,74 @@ with st.expander("📊 Analyze", expanded=False):
             # Get feature columns (excluding target and date)
             feature_cols = [col for col in df_analysis.columns if col not in ['total_revenue', 'date']]
 
-            # ---------- KPI CARDS (Simplified) ----------
+            # ---------- KPI CARDS ----------
             total_revenue = df["total_revenue"].sum()
             total_ad_spend = df[["fb_spend","instagram_spend","tiktok_spend"]].sum().sum()
             total_campaigns = len(df)
-            overall_roas = total_revenue / total_ad_spend if total_ad_spend > 0 else 0
 
-            col1, col2, col3, col4 = st.columns(4)
+            col1, col2, col3 = st.columns(3)
             with col1:
                 st.metric("💰 Total Ad Spend", f"${total_ad_spend:,.2f}")
+                if st.checkbox("View spend by channel", key="show_channel_spend"):
+                    channel_spend = df[["fb_spend","instagram_spend","tiktok_spend"]].sum().to_frame(name="Total Spend")
+                    st.dataframe(channel_spend)
             with col2:
                 st.metric("📊 Total Revenue", f"${total_revenue:,.2f}")
+                if st.checkbox("View revenue timeline", key="show_revenue_timeline"):
+                    if "date" in df.columns:
+                        revenue_trend = df.groupby("date")["total_revenue"].sum().reset_index()
+                        st.line_chart(revenue_trend.set_index("date"))
+                if st.checkbox("View revenue by category", key="show_revenue_category"):
+                    if "category" in df.columns:
+                        category_revenue = df.groupby("category")["total_revenue"].sum().sort_values(ascending=False)
+                        st.dataframe(category_revenue)
             with col3:
                 st.metric("📈 Total Campaigns", total_campaigns)
-            with col4:
-                st.metric("📈 Overall ROAS", f"{overall_roas:.2f}x")
 
-            # ---------- VERTICAL BAR CHART: Revenue by Category ----------
+            # ---------- HEATMAP: Ad Spend by Category and Channel ----------
+            st.subheader("Heatmap – Ad Spend by Campaign Category & Channel")
             if "category" in df.columns:
-                st.subheader("📊 Total Revenue by Campaign Category")
-                category_revenue = df.groupby("category")["total_revenue"].sum().sort_values(ascending=True)
-                
-                # Create vertical bar chart
-                st.bar_chart(category_revenue)
-                
-                # Show the data table
-                st.dataframe(category_revenue.to_frame(name="Total Revenue"))
-
-            # ---------- HEATMAP: Ad Spend by Category and Channel (Fixed Timeframe) ----------
-            st.subheader("🔥 Heatmap – Ad Spend by Campaign Category & Channel")
-            if "category" in df.columns:
-                # Convert date to datetime if not already
-                if "date" in df.columns:
-                    df["date"] = pd.to_datetime(df["date"])
-                
                 # Option to filter by timeframe
                 timeframe = st.selectbox("Select timeframe for heatmap", 
-                                         ["All time", "Past Week", "Past Month", "Past 6 Months", "Past Year"],
+                                         ["All time","Past Week","Past Month","Past 6 Months","Past Year"],
                                          key="heatmap_timeframe")
-                
                 filtered_df = df.copy()
-                
-                if "date" in df.columns and timeframe != "All time":
+                if "date" in df.columns:
+                    # Convert date to datetime if not already
+                    filtered_df["date"] = pd.to_datetime(filtered_df["date"])
                     today = pd.Timestamp.now()
                     
                     if timeframe == "Past Week":
-                        cutoff_date = today - pd.Timedelta(days=7)
+                        filtered_df = filtered_df[filtered_df["date"] >= today - pd.Timedelta(days=7)]
                     elif timeframe == "Past Month":
-                        cutoff_date = today - pd.Timedelta(days=30)
+                        filtered_df = filtered_df[filtered_df["date"] >= today - pd.Timedelta(days=30)]
                     elif timeframe == "Past 6 Months":
-                        cutoff_date = today - pd.Timedelta(days=182)
+                        filtered_df = filtered_df[filtered_df["date"] >= today - pd.Timedelta(days=182)]
                     elif timeframe == "Past Year":
-                        cutoff_date = today - pd.Timedelta(days=365)
-                    else:
-                        cutoff_date = filtered_df["date"].min()
-                    
-                    filtered_df = filtered_df[filtered_df["date"] >= cutoff_date]
-                    st.caption(f"📅 Showing data from {cutoff_date.strftime('%Y-%m-%d')} to {today.strftime('%Y-%m-%d')}")
-                
-                # Pivot table for heatmap (showing ad spend)
-                heatmap_data = filtered_df.groupby("category")[["fb_spend", "instagram_spend", "tiktok_spend"]].sum()
-                
-                # Rename columns for better display
-                heatmap_data_display = heatmap_data.rename(columns={
-                    "fb_spend": "Facebook",
-                    "instagram_spend": "Instagram", 
-                    "tiktok_spend": "TikTok"
-                })
+                        filtered_df = filtered_df[filtered_df["date"] >= today - pd.Timedelta(days=365)]
+
+                # Pivot table for heatmap (showing ad spend, not revenue)
+                heatmap_data = filtered_df.groupby("category")[["fb_spend","instagram_spend","tiktok_spend"]].sum()
                 
                 if not heatmap_data.empty:
-                    st.dataframe(heatmap_data_display)
-                    
-                    # Colored heatmap
+                    st.dataframe(heatmap_data)
+
+                    # Optional: colored heatmap
                     try:
                         import seaborn as sns
                         import matplotlib.pyplot as plt
                         
-                        fig, ax = plt.subplots(figsize=(10, 5))
-                        sns.heatmap(heatmap_data, annot=True, fmt=".0f", cmap="YlOrRd", ax=ax, 
-                                   cbar_kws={'label': 'Ad Spend ($)'})
-                        plt.title("Ad Spend Heatmap by Category & Channel", fontsize=14, fontweight='bold')
-                        plt.ylabel("Campaign Category", fontweight='bold')
-                        plt.xlabel("Channel", fontweight='bold')
-                        plt.xticks(rotation=0)
+                        fig, ax = plt.subplots(figsize=(8,4))
+                        sns.heatmap(heatmap_data, annot=True, fmt=".0f", cmap="YlGnBu", ax=ax)
+                        plt.title("Ad Spend Heatmap by Category & Channel")
                         st.pyplot(fig)
                     except ImportError:
-                        st.info("Install seaborn and matplotlib for heatmap visualization")
+                        st.info("Install seaborn and matplotlib for heatmap visualization: pip install seaborn matplotlib")
                 else:
-                    st.info(f"No data available for selected timeframe: {timeframe}")
-            else:
-                st.info("No category column found in dataset")
+                    st.info("No data available for selected timeframe")
 
-            # ---------- CHANNEL CONTRIBUTION (Feature Importance) - Simplified ----------
+            # ---------- CHANNEL CONTRIBUTION (Feature Importance) ----------
             st.subheader("📊 Channel Contribution Analysis")
-            st.write("How much each channel impacts revenue (Lasso Coefficients):")
             
             # Extract coefficients from Lasso model
             if hasattr(model, 'coef_'):
@@ -543,73 +517,15 @@ with st.expander("📊 Analyze", expanded=False):
                     'Feature': feature_cols,
                     'Coefficient': model.coef_
                 })
-                
                 # Filter for adstock and spend features only
-                channel_features = coef_df[coef_df['Feature'].str.contains('adstock|spend', case=False)].copy()
+                channel_features = coef_df[coef_df['Feature'].str.contains('adstock|spend', case=False)]
                 
                 if not channel_features.empty:
-                    # Create alias mapping
-                    alias_map = {
-                        'fb_spend': 'Facebook Spend',
-                        'instagram_spend': 'Instagram Spend',
-                        'tiktok_spend': 'TikTok Spend',
-                        'fb_adstock': 'Facebook AdStock',
-                        'insta_adstock': 'Instagram AdStock',
-                        'tiktok_adstock': 'TikTok AdStock'
-                    }
+                    # Show top contributing channels
+                    st.write("**Impact of each channel on revenue:**")
+                    st.dataframe(channel_features.sort_values('Coefficient', ascending=False))
                     
-                    # Apply aliases
-                    channel_features['Channel'] = channel_features['Feature'].map(alias_map).fillna(channel_features['Feature'])
-                    
-                    # Sort by coefficient
-                    channel_features = channel_features.sort_values('Coefficient', ascending=False)
-                    
-                    # Create display dataframe
-                    display_df = channel_features[['Channel', 'Coefficient']].copy()
-                    display_df['Impact'] = display_df['Coefficient'].apply(lambda x: '✅ Positive' if x > 0 else '❌ Negative' if x < 0 else '⚪ Neutral')
-                    display_df['Coefficient'] = display_df['Coefficient'].apply(lambda x: f"{x:.4f}")
-                    
-                    # Display table with color styling using pandas styler
-                    def color_coefficient(val):
-                        try:
-                            num_val = float(val)
-                            if num_val > 0:
-                                return 'background-color: #90EE90'  # Light green
-                            elif num_val < 0:
-                                return 'background-color: #FFCCCC'  # Light red
-                            else:
-                                return ''
-                        except:
-                            return ''
-                    
-                    # Apply styling to the coefficient column in the original display
-                    styled_df = channel_features[['Channel', 'Coefficient']].copy()
-                    styled_df['Coefficient'] = styled_df['Coefficient'].round(4)
-                    
-                    # Display with color mapping
-                    st.dataframe(
-                        styled_df.style.applymap(
-                            lambda x: 'background-color: #90EE90' if isinstance(x, (int, float)) and x > 0 
-                                     else ('background-color: #FFCCCC' if isinstance(x, (int, float)) and x < 0 else ''),
-                            subset=['Coefficient']
-                        ),
-                        use_container_width=True
-                    )
-                    
-                    # Simple explanation of coefficients
-                    st.caption("💡 **How to read this:** Positive coefficient = More spend increases revenue | Negative coefficient = More spend decreases revenue")
-                    
-                    # ---------- ADSTOCK DEFINITION ----------
-                    st.markdown("---")
-                    st.subheader("📖 What is AdStock?")
-                    st.info("""
-                    **AdStock** (also called Carryover Effect) measures how advertising continues to influence revenue even after the campaign ends.
-                    
-                    🔹 **Simple explanation:** Money spent on ads today doesn't just affect today's sales. It creates a "memory" that influences customers for days or weeks.
-                    
-                    🔹 **Example:** If you spend $100 on Facebook ads today, AdStock captures that this $100 will continue to drive sales for the next several days (with diminishing effect).
-                    
-                    🔹 **Why it matters:** Without AdStock, your model would underestimate the true value of advertising.
-                    """)
+                    # Visualize coefficients
+                    st.bar_chart(channel_features.set_index('Feature')['Coefficient'])
                 else:
                     st.info("No channel-specific coefficients found")
