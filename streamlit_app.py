@@ -108,6 +108,11 @@ def train_prediction_model(df):
         st.session_state["feature_cols"] = feature_cols
         st.session_state["test_indices"] = X_test.index.tolist()
         
+        # Store full transformed data for later use in predict section
+        st.session_state["df_analysis"] = df_model
+        st.session_state["y_actual_full"] = y
+        st.session_state["y_predicted_full"] = model.predict(X)
+        
         return model, None, r2, mae
         
     except Exception as e:
@@ -227,6 +232,104 @@ if uploaded_file is not None:
         elif st.session_state.get("model_type") != "lasso":
             st.warning("Model not trained successfully. Please re-upload and clean data.")
         else:
+            # ========== MODEL ACCURACY INTRODUCTION ==========
+            st.subheader("📊 Model Accuracy Overview")
+            st.write("Before making predictions, see how well our model performs on historical data:")
+            
+            # Display model accuracy metrics
+            col_acc1, col_acc2, col_acc3 = st.columns(3)
+            with col_acc1:
+                st.metric("🎯 R² Score", f"{st.session_state.get('r2_score', 0):.4f}", 
+                         help="Closer to 1.0 means better predictions")
+            with col_acc2:
+                st.metric("📉 Mean Absolute Error", f"${st.session_state.get('mae', 0):,.2f}",
+                         help="Average prediction error in dollars")
+            with col_acc3:
+                # Calculate MAPE if possible
+                y_actual_full = st.session_state.get("y_actual_full")
+                y_predicted_full = st.session_state.get("y_predicted_full")
+                if y_actual_full is not None and len(y_actual_full) > 0:
+                    mape = np.mean(np.abs((y_actual_full - y_predicted_full) / y_actual_full)) * 100
+                    st.metric("📊 Avg. Accuracy", f"{100 - mape:.1f}%",
+                             help="Average prediction accuracy percentage")
+                else:
+                    st.metric("📊 Model Status", "Ready")
+            
+            st.info("💡 **Interpretation:** Higher R² (closer to 1.0) means more reliable predictions. Lower MAE means smaller prediction errors.")
+            
+            # ---------- ACTUAL VS PREDICTED CHART ----------
+            st.subheader("📈 Actual vs Predicted Revenue Over Time")
+            st.write("This chart shows how well our model predictions match actual historical revenue:")
+            
+            # Get stored transformed data
+            df_analysis = st.session_state.get("df_analysis")
+            df = st.session_state["cleaned_df"]
+            model = st.session_state["trained_model"]
+            
+            if df_analysis is not None and "date" in df.columns:
+                feature_cols = st.session_state.get("feature_cols", [])
+                
+                if len(feature_cols) > 0:
+                    # Use stored predictions or recalculate
+                    if "y_predicted_full" in st.session_state:
+                        y_predicted = st.session_state["y_predicted_full"]
+                        y_actual = st.session_state["y_actual_full"]
+                    else:
+                        X = df_analysis[feature_cols]
+                        y_actual = df["total_revenue"]
+                        y_predicted = model.predict(X)
+                    
+                    # Create dataframe with predictions
+                    pred_df = df[["date"]].copy()
+                    pred_df["Actual Revenue"] = y_actual.values
+                    pred_df["Predicted Revenue"] = y_predicted
+                    pred_df["date"] = pd.to_datetime(pred_df["date"])
+                    pred_df = pred_df.sort_values("date")
+                    
+                    # Date range selector (default to last 6 months)
+                    min_date = pred_df["date"].min()
+                    max_date = pred_df["date"].max()
+                    default_start = max_date - pd.Timedelta(days=182)
+                    
+                    col_date1, col_date2 = st.columns(2)
+                    with col_date1:
+                        start_date = st.date_input("Start Date", value=default_start, min_value=min_date, max_value=max_date, key="pred_start_date")
+                    with col_date2:
+                        end_date = st.date_input("End Date", value=max_date, min_value=min_date, max_value=max_date, key="pred_end_date")
+                    
+                    # Filter based on selected dates
+                    mask = (pred_df["date"] >= pd.to_datetime(start_date)) & (pred_df["date"] <= pd.to_datetime(end_date))
+                    pred_df_filtered = pred_df[mask]
+                    
+                    if not pred_df_filtered.empty:
+                        st.line_chart(pred_df_filtered.set_index("date"))
+                        st.caption(f"📅 Showing data from {start_date} to {end_date}")
+                        
+                        # Calculate accuracy on selected range
+                        if len(pred_df_filtered) >= 2:
+                            r2_range = r2_score(pred_df_filtered["Actual Revenue"], pred_df_filtered["Predicted Revenue"])
+                            mae_range = mean_absolute_error(pred_df_filtered["Actual Revenue"], pred_df_filtered["Predicted Revenue"])
+                            
+                            col_a, col_b = st.columns(2)
+                            with col_a:
+                                st.metric("R² Score (selected period)", f"{r2_range:.4f}")
+                            with col_b:
+                                st.metric("MAE (selected period)", f"${mae_range:,.2f}")
+                            
+                            # Confidence indicator
+                            if r2_range >= 0.8:
+                                st.success("✅ **High confidence:** Model predictions are very reliable for this period.")
+                            elif r2_range >= 0.6:
+                                st.info("📊 **Moderate confidence:** Predictions are reasonably reliable.")
+                            else:
+                                st.warning("⚠️ **Low confidence:** Consider retraining model with more data.")
+                    else:
+                        st.warning("No data available for selected date range.")
+                    
+                    st.markdown("---")
+            
+            # ========== PREDICTION INPUT SECTION ==========
+            st.subheader("🎯 Make New Predictions")
             st.write("Enter ad spend values to predict revenue:")
             
             # Get category options if available
@@ -284,9 +387,10 @@ if uploaded_file is not None:
                 elif roi > 50:
                     st.info("✅ Good ROI predicted!")
                 
-                # Show model quality badge
+                # Show model quality badge with confidence note
                 r2_score_val = st.session_state.get("r2_score", 0)
-                st.caption(f"🤖 Lasso Regression Model • R² Score: {r2_score_val:.3f}")
+                confidence_text = "High confidence" if r2_score_val >= 0.8 else "Moderate confidence" if r2_score_val >= 0.6 else "Low confidence"
+                st.caption(f"🤖 Lasso Regression Model • R² Score: {r2_score_val:.3f} • {confidence_text}")
                 
                 # Show details
                 with st.expander("🔍 Show calculation details"):
@@ -350,58 +454,6 @@ with st.expander("📊 Analyze", expanded=False):
                         st.dataframe(category_revenue)
             with col3:
                 st.metric("📈 Total Campaigns", total_campaigns)
-
-            # ---------- ACTUAL VS PREDICTED ----------
-            st.subheader("Actual vs Predicted Revenue Over Time")
-            
-            if "date" in df.columns and len(feature_cols) > 0:
-                # Use transformed dataset for prediction
-                X = df_analysis[feature_cols]
-                y_actual = df["total_revenue"]
-                y_predicted = model.predict(X)
-                
-                # Create dataframe with predictions
-                pred_df = df[["date"]].copy()
-                pred_df["Actual Revenue"] = y_actual.values
-                pred_df["Predicted Revenue"] = y_predicted
-                pred_df["date"] = pd.to_datetime(pred_df["date"])
-                pred_df = pred_df.sort_values("date")
-                
-                # Date range selector
-                min_date = pred_df["date"].min()
-                max_date = pred_df["date"].max()
-                
-                # Default to last 6 months
-                default_start = max_date - pd.Timedelta(days=182)
-                
-                col_date1, col_date2 = st.columns(2)
-                with col_date1:
-                    start_date = st.date_input("Start Date", value=default_start, min_value=min_date, max_value=max_date)
-                with col_date2:
-                    end_date = st.date_input("End Date", value=max_date, min_value=min_date, max_value=max_date)
-                
-                # Filter based on selected dates
-                mask = (pred_df["date"] >= pd.to_datetime(start_date)) & (pred_df["date"] <= pd.to_datetime(end_date))
-                pred_df_filtered = pred_df[mask]
-                
-                if not pred_df_filtered.empty:
-                    st.line_chart(pred_df_filtered.set_index("date"))
-                    st.caption(f"📅 Showing data from {start_date} to {end_date}")
-                    
-                    # Calculate accuracy on filtered data
-                    from sklearn.metrics import r2_score, mean_absolute_error
-                    
-                    if len(pred_df_filtered) >= 2:
-                        r2 = r2_score(pred_df_filtered["Actual Revenue"], pred_df_filtered["Predicted Revenue"])
-                        mae = mean_absolute_error(pred_df_filtered["Actual Revenue"], pred_df_filtered["Predicted Revenue"])
-                        
-                        col_a, col_b = st.columns(2)
-                        with col_a:
-                            st.metric("R² Score", f"{r2:.4f}")
-                        with col_b:
-                            st.metric("Mean Absolute Error", f"${mae:,.2f}")
-                else:
-                    st.warning("No data available for selected date range.")
 
             # ---------- HEATMAP: Ad Spend by Category and Channel ----------
             st.subheader("Heatmap – Ad Spend by Campaign Category & Channel")
