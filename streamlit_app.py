@@ -245,81 +245,106 @@ with st.expander("🎯 Predict Revenue", expanded=False):
             y_actual_full = st.session_state.get("y_actual_full")
             y_predicted_full = st.session_state.get("y_predicted_full")
             if y_actual_full is not None and len(y_actual_full) > 0:
-                mape = np.mean(np.abs((y_actual_full - y_predicted_full) / y_actual_full)) * 100
-                st.metric("📊 Accuracy", f"{100 - mape:.1f}%")
+                # Avoid division by zero
+                non_zero_mask = y_actual_full != 0
+                if np.any(non_zero_mask):
+                    mape = np.mean(np.abs((y_actual_full[non_zero_mask] - y_predicted_full[non_zero_mask]) / y_actual_full[non_zero_mask])) * 100
+                    st.metric("📊 Accuracy", f"{100 - mape:.1f}%")
+                else:
+                    st.metric("📊 Status", "Ready")
             else:
                 st.metric("📊 Status", "Ready")
         
         # ---------- COMPACT ACTUAL VS PREDICTED (LAST 6 MONTHS ONLY) ----------
         st.subheader("📈 Actual vs Predicted (Last 6 Months)")
         
-        # Get stored transformed data
-        df_analysis = st.session_state.get("df_analysis")
+        # Get stored data
         df = st.session_state["cleaned_df"]
-        model = st.session_state["trained_model"]
         
-        if df_analysis is not None and "date" in df.columns:
-            feature_cols = st.session_state.get("feature_cols", [])
+        # Debug: Check if we have the required data
+        if "y_predicted_full" not in st.session_state:
+            st.info("Recalculating predictions for chart...")
+            # Recreate transformed dataset
+            df_temp = df.copy()
+            df_temp['fb_adstock'] = adstock(df_temp['fb_spend'].values)
+            df_temp['insta_adstock'] = adstock(df_temp['instagram_spend'].values)
+            df_temp['tiktok_adstock'] = adstock(df_temp['tiktok_spend'].values)
             
-            if len(feature_cols) > 0:
-                # Use stored predictions or recalculate
-                if "y_predicted_full" in st.session_state:
-                    y_predicted = st.session_state["y_predicted_full"]
-                    y_actual = st.session_state["y_actual_full"]
-                else:
-                    X = df_analysis[feature_cols]
-                    y_actual = df["total_revenue"]
-                    y_predicted = model.predict(X)
+            if 'category' in df_temp.columns:
+                df_temp = pd.get_dummies(df_temp, columns=['category'], drop_first=True)
+            
+            feature_cols = [col for col in df_temp.columns if col not in ['total_revenue', 'date']]
+            X_full = df_temp[feature_cols]
+            y_actual_full = df['total_revenue'].values
+            model = st.session_state["trained_model"]
+            y_predicted_full = model.predict(X_full)
+            
+            # Store for next time
+            st.session_state["y_predicted_full"] = y_predicted_full
+            st.session_state["y_actual_full"] = y_actual_full
+            st.session_state["df_analysis"] = df_temp
+        else:
+            y_predicted_full = st.session_state["y_predicted_full"]
+            y_actual_full = st.session_state["y_actual_full"]
+        
+        # Create dataframe with predictions
+        if "date" in df.columns and len(df) > 0:
+            pred_df = pd.DataFrame({
+                'date': pd.to_datetime(df['date']),
+                'Actual Revenue': y_actual_full,
+                'Predicted Revenue': y_predicted_full
+            })
+            pred_df = pred_df.sort_values('date')
+            
+            # Filter for last 6 months only
+            max_date = pred_df['date'].max()
+            six_months_ago = max_date - pd.Timedelta(days=182)
+            pred_df_last_6m = pred_df[pred_df['date'] >= six_months_ago]
+            
+            # Show data info for debugging
+            st.caption(f"📊 Total data points: {len(pred_df)} | Last 6 months: {len(pred_df_last_6m)} points")
+            
+            if not pred_df_last_6m.empty:
+                # Make chart smaller using height parameter
+                st.line_chart(pred_df_last_6m.set_index('date')[['Actual Revenue', 'Predicted Revenue']], height=300)
+                st.caption(f"📅 Last 6 months: {pred_df_last_6m['date'].min().strftime('%Y-%m-%d')} to {pred_df_last_6m['date'].max().strftime('%Y-%m-%d')}")
                 
-                # Create dataframe with predictions
-                pred_df = df[["date"]].copy()
-                pred_df["Actual Revenue"] = y_actual.values
-                pred_df["Predicted Revenue"] = y_predicted
-                pred_df["date"] = pd.to_datetime(pred_df["date"])
-                pred_df = pred_df.sort_values("date")
-                
-                # Filter for last 6 months only
-                max_date = pred_df["date"].max()
-                six_months_ago = max_date - pd.Timedelta(days=182)
-                pred_df_last_6m = pred_df[pred_df["date"] >= six_months_ago]
-                
-                if not pred_df_last_6m.empty:
-                    # Make chart smaller using height parameter
-                    st.line_chart(pred_df_last_6m.set_index("date"), height=300)
-                    st.caption(f"📅 Last 6 months: {pred_df_last_6m['date'].min().strftime('%Y-%m-%d')} to {pred_df_last_6m['date'].max().strftime('%Y-%m-%d')}")
+                # Calculate accuracy on last 6 months
+                if len(pred_df_last_6m) >= 2:
+                    from sklearn.metrics import r2_score, mean_absolute_error
+                    r2_6m = r2_score(pred_df_last_6m['Actual Revenue'], pred_df_last_6m['Predicted Revenue'])
+                    mae_6m = mean_absolute_error(pred_df_last_6m['Actual Revenue'], pred_df_last_6m['Predicted Revenue'])
                     
-                    # Calculate accuracy on last 6 months
-                    if len(pred_df_last_6m) >= 2:
-                        r2_6m = r2_score(pred_df_last_6m["Actual Revenue"], pred_df_last_6m["Predicted Revenue"])
-                        mae_6m = mean_absolute_error(pred_df_last_6m["Actual Revenue"], pred_df_last_6m["Predicted Revenue"])
-                        
-                        # Show accuracy metrics in a compact row
-                        col_metric1, col_metric2 = st.columns(2)
-                        with col_metric1:
-                            st.metric("📊 R² (Last 6M)", f"{r2_6m:.4f}", 
-                                     help="Closer to 1.0 = better predictions")
-                        with col_metric2:
-                            st.metric("💰 MAE (Last 6M)", f"${mae_6m:,.2f}",
-                                     help="Average prediction error")
-                        
-                        # Confidence indicator
-                        if r2_6m >= 0.8:
-                            st.success("✅ **High confidence** - Model is reliable for recent data")
-                        elif r2_6m >= 0.6:
-                            st.info("📊 **Moderate confidence** - Predictions are reasonably reliable")
-                        else:
-                            st.warning("⚠️ **Low confidence** - Consider retraining with more recent data")
+                    # Show accuracy metrics in a compact row
+                    col_metric1, col_metric2 = st.columns(2)
+                    with col_metric1:
+                        st.metric("📊 R² (Last 6M)", f"{r2_6m:.4f}", 
+                                 help="Closer to 1.0 = better predictions")
+                    with col_metric2:
+                        st.metric("💰 MAE (Last 6M)", f"${mae_6m:,.2f}",
+                                 help="Average prediction error")
+                    
+                    # Confidence indicator
+                    if r2_6m >= 0.8:
+                        st.success("✅ **High confidence** - Model is reliable for recent data")
+                    elif r2_6m >= 0.6:
+                        st.info("📊 **Moderate confidence** - Predictions are reasonably reliable")
+                    else:
+                        st.warning("⚠️ **Low confidence** - Consider retraining with more recent data")
                 else:
-                    st.info("Not enough data in the last 6 months to display chart.")
-                
-                st.markdown("---")
+                    st.info("Need at least 2 data points in last 6 months to calculate accuracy.")
+            else:
+                st.warning(f"No data available in the last 6 months. Earliest date: {pred_df['date'].min().strftime('%Y-%m-%d')}, Latest: {max_date.strftime('%Y-%m-%d')}")
+        else:
+            st.warning("Date column not found or empty in dataset.")
+        
+        st.markdown("---")
         
         # ========== PREDICTION INPUT SECTION ==========
         st.subheader("🎯 Make New Predictions")
         st.write("Enter ad spend values to predict revenue:")
         
         # Get category options if available
-        df = st.session_state["cleaned_df"]
         has_category = 'category' in df.columns
         
         # Input columns
@@ -391,7 +416,7 @@ with st.expander("🎯 Predict Revenue", expanded=False):
                 st.write("- Lasso Regression automatically selects important features")
                 st.write("- Adstock captures delayed/recurring effects of ad spend")
                 st.write("- Category dummies account for campaign type differences")
-
+                
 # ---------- ANALYZE SECTION ----------
 with st.expander("📊 Analyze", expanded=False):
     if st.button("Run Analyze"):
