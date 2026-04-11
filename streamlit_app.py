@@ -464,39 +464,28 @@ with st.expander("📊 Analyze", expanded=False):
         # ---------- HEATMAP: Ad Spend by Category and Channel ----------
         st.subheader("Heatmap – Ad Spend by Campaign Category & Channel")
         if "category" in df.columns:
-            # Option to filter by timeframe
-            timeframe = st.selectbox("Select timeframe for heatmap", 
-                                     ["All time","Past Week","Past Month","Past 6 Months","Past Year"],
-                                     key="heatmap_timeframe")
-            
-            # Use the original df for filtering (has date column)
-            filtered_df = df.copy()
-            
-            if "date" in df.columns and timeframe != "All time":
-                # Convert date to datetime if not already
-                filtered_df["date"] = pd.to_datetime(filtered_df["date"])
-                today = pd.Timestamp.now()
+            # Date range selector for heatmap
+            if "date" in df.columns:
+                # Convert date to datetime
+                df["date"] = pd.to_datetime(df["date"])
+                min_date = df["date"].min().date()
+                max_date = df["date"].max().date()
                 
-                # Calculate cutoff date based on selected timeframe
-                if timeframe == "Past Week":
-                    cutoff_date = today - pd.Timedelta(days=7)
-                elif timeframe == "Past Month":
-                    cutoff_date = today - pd.Timedelta(days=30)
-                elif timeframe == "Past 6 Months":
-                    cutoff_date = today - pd.Timedelta(days=182)
-                elif timeframe == "Past Year":
-                    cutoff_date = today - pd.Timedelta(days=365)
-                else:
-                    cutoff_date = None
+                # Create date range selector
+                col_date1, col_date2 = st.columns(2)
+                with col_date1:
+                    start_date = st.date_input("Start Date", value=min_date, min_value=min_date, max_value=max_date, key="heatmap_start")
+                with col_date2:
+                    end_date = st.date_input("End Date", value=max_date, min_value=min_date, max_value=max_date, key="heatmap_end")
                 
-                # Apply filter only if cutoff_date exists
-                if cutoff_date is not None:
-                    filtered_df = filtered_df[filtered_df["date"] >= cutoff_date]
-                    
-                    # Show info about filtered data
-                    st.caption(f"📅 Showing data from {cutoff_date.strftime('%Y-%m-%d')} to {today.strftime('%Y-%m-%d')}")
-            elif "date" in df.columns and timeframe == "All time":
-                st.caption(f"📅 Showing all data from {pd.to_datetime(df['date']).min().strftime('%Y-%m-%d')} to {pd.to_datetime(df['date']).max().strftime('%Y-%m-%d')}")
+                # Filter data based on date range
+                filtered_df = df[(df["date"] >= pd.to_datetime(start_date)) & (df["date"] <= pd.to_datetime(end_date))]
+                
+                # Show selected date range info
+                st.caption(f"📅 Showing data from {start_date} to {end_date}")
+            else:
+                filtered_df = df.copy()
+                st.caption("📅 No date column found - showing all data")
         
             # Pivot table for heatmap (showing ad spend, not revenue)
             heatmap_data = filtered_df.groupby("category")[["fb_spend","instagram_spend","tiktok_spend"]].sum()
@@ -509,15 +498,14 @@ with st.expander("📊 Analyze", expanded=False):
                     
                     fig, ax = plt.subplots(figsize=(8,4))
                     sns.heatmap(heatmap_data, annot=True, fmt=".0f", cmap="YlGnBu", ax=ax)
-                    plt.title(f"Ad Spend Heatmap by Category & Channel ({timeframe})")
+                    plt.title(f"Ad Spend Heatmap by Category & Channel")
                     st.pyplot(fig)
                 except ImportError:
                     st.info("Install seaborn and matplotlib for heatmap visualization: pip install seaborn matplotlib")
             else:
-                st.info(f"No data available for selected timeframe: {timeframe}")
+                st.info(f"No data available for selected date range: {start_date} to {end_date}")
         else:
             st.info("Category column not found for heatmap.")
-
         # ---------- CHANNEL CONTRIBUTION (Feature Importance) ----------
         st.subheader("📊 Channel Contribution Analysis")
         
