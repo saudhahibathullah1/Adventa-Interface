@@ -352,59 +352,58 @@ with st.expander("📊 Analyze", expanded=False):
                 st.metric("📈 Total Campaigns", total_campaigns)
 
             # ---------- ACTUAL VS PREDICTED ----------
-            # ---------- ACTUAL VS PREDICTED ----------
-st.subheader("Actual vs Predicted Revenue Over Time")
-
-if "date" in df.columns and len(feature_cols) > 0:
-    # Use transformed dataset for prediction
-    X = df_analysis[feature_cols]
-    y_actual = df["total_revenue"]
-    y_predicted = model.predict(X)
-    
-    # Create dataframe with predictions
-    pred_df = df[["date"]].copy()
-    pred_df["Actual Revenue"] = y_actual.values
-    pred_df["Predicted Revenue"] = y_predicted
-    pred_df["date"] = pd.to_datetime(pred_df["date"])
-    pred_df = pred_df.sort_values("date")
-    
-    # Date range selector
-    min_date = pred_df["date"].min()
-    max_date = pred_df["date"].max()
-    
-    # Default to last 6 months
-    default_start = max_date - pd.Timedelta(days=182)
-    
-    col_date1, col_date2 = st.columns(2)
-    with col_date1:
-        start_date = st.date_input("Start Date", value=default_start, min_value=min_date, max_value=max_date)
-    with col_date2:
-        end_date = st.date_input("End Date", value=max_date, min_value=min_date, max_value=max_date)
-    
-    # Filter based on selected dates
-    mask = (pred_df["date"] >= pd.to_datetime(start_date)) & (pred_df["date"] <= pd.to_datetime(end_date))
-    pred_df_filtered = pred_df[mask]
-    
-    if not pred_df_filtered.empty:
-        st.line_chart(pred_df_filtered.set_index("date"))
-        st.caption(f"📅 Showing data from {start_date} to {end_date}")
-        
-        # Calculate accuracy on filtered data
-        from sklearn.metrics import r2_score, mean_absolute_error
-        
-        if len(pred_df_filtered) >= 2:
-            r2 = r2_score(pred_df_filtered["Actual Revenue"], pred_df_filtered["Predicted Revenue"])
-            mae = mean_absolute_error(pred_df_filtered["Actual Revenue"], pred_df_filtered["Predicted Revenue"])
+            st.subheader("Actual vs Predicted Revenue Over Time")
             
-            col_a, col_b = st.columns(2)
-            with col_a:
-                st.metric("R² Score", f"{r2:.4f}")
-            with col_b:
-                st.metric("Mean Absolute Error", f"${mae:,.2f}")
-    else:
-        st.warning("No data available for selected date range.")
+            if "date" in df.columns and len(feature_cols) > 0:
+                # Use transformed dataset for prediction
+                X = df_analysis[feature_cols]
+                y_actual = df["total_revenue"]
+                y_predicted = model.predict(X)
+                
+                # Create dataframe with predictions
+                pred_df = df[["date"]].copy()
+                pred_df["Actual Revenue"] = y_actual.values
+                pred_df["Predicted Revenue"] = y_predicted
+                pred_df["date"] = pd.to_datetime(pred_df["date"])
+                pred_df = pred_df.sort_values("date")
+                
+                # Date range selector
+                min_date = pred_df["date"].min()
+                max_date = pred_df["date"].max()
+                
+                # Default to last 6 months
+                default_start = max_date - pd.Timedelta(days=182)
+                
+                col_date1, col_date2 = st.columns(2)
+                with col_date1:
+                    start_date = st.date_input("Start Date", value=default_start, min_value=min_date, max_value=max_date)
+                with col_date2:
+                    end_date = st.date_input("End Date", value=max_date, min_value=min_date, max_value=max_date)
+                
+                # Filter based on selected dates
+                mask = (pred_df["date"] >= pd.to_datetime(start_date)) & (pred_df["date"] <= pd.to_datetime(end_date))
+                pred_df_filtered = pred_df[mask]
+                
+                if not pred_df_filtered.empty:
+                    st.line_chart(pred_df_filtered.set_index("date"))
+                    st.caption(f"📅 Showing data from {start_date} to {end_date}")
+                    
+                    # Calculate accuracy on filtered data
+                    from sklearn.metrics import r2_score, mean_absolute_error
+                    
+                    if len(pred_df_filtered) >= 2:
+                        r2 = r2_score(pred_df_filtered["Actual Revenue"], pred_df_filtered["Predicted Revenue"])
+                        mae = mean_absolute_error(pred_df_filtered["Actual Revenue"], pred_df_filtered["Predicted Revenue"])
+                        
+                        col_a, col_b = st.columns(2)
+                        with col_a:
+                            st.metric("R² Score", f"{r2:.4f}")
+                        with col_b:
+                            st.metric("Mean Absolute Error", f"${mae:,.2f}")
+                else:
+                    st.warning("No data available for selected date range.")
 
-            # ---------- HEATMAP: Revenue by Category and Channel ----------
+            # ---------- HEATMAP: Ad Spend by Category and Channel ----------
             st.subheader("Heatmap – Ad Spend by Campaign Category & Channel")
             if "category" in df.columns:
                 # Option to filter by timeframe
