@@ -225,187 +225,172 @@ if uploaded_file is not None:
                 mime="text/csv"
             )
 
-    # ---------- PREDICT SECTION ----------
-    with st.expander("🎯 Predict Revenue", expanded=False):
-        if "cleaned_df" not in st.session_state:
-            st.warning("Please clean the dataset first to train the model.")
-        elif st.session_state.get("model_type") != "lasso":
-            st.warning("Model not trained successfully. Please re-upload and clean data.")
-        else:
-            # ========== MODEL ACCURACY INTRODUCTION ==========
-            st.subheader("📊 Model Accuracy Overview")
-            st.write("Before making predictions, see how well our model performs on historical data:")
+# ---------- PREDICT SECTION ----------
+with st.expander("🎯 Predict Revenue", expanded=False):
+    if "cleaned_df" not in st.session_state:
+        st.warning("Please clean the dataset first to train the model.")
+    elif st.session_state.get("model_type") != "lasso":
+        st.warning("Model not trained successfully. Please re-upload and clean data.")
+    else:
+        # ========== MODEL ACCURACY INTRODUCTION ==========
+        st.subheader("📊 Model Accuracy Overview")
+        
+        # Display model accuracy metrics in a single row
+        col_acc1, col_acc2, col_acc3 = st.columns(3)
+        with col_acc1:
+            st.metric("🎯 R² Score", f"{st.session_state.get('r2_score', 0):.4f}")
+        with col_acc2:
+            st.metric("📉 Mean Absolute Error", f"${st.session_state.get('mae', 0):,.2f}")
+        with col_acc3:
+            y_actual_full = st.session_state.get("y_actual_full")
+            y_predicted_full = st.session_state.get("y_predicted_full")
+            if y_actual_full is not None and len(y_actual_full) > 0:
+                mape = np.mean(np.abs((y_actual_full - y_predicted_full) / y_actual_full)) * 100
+                st.metric("📊 Accuracy", f"{100 - mape:.1f}%")
+            else:
+                st.metric("📊 Status", "Ready")
+        
+        # ---------- COMPACT ACTUAL VS PREDICTED (LAST 6 MONTHS ONLY) ----------
+        st.subheader("📈 Actual vs Predicted (Last 6 Months)")
+        
+        # Get stored transformed data
+        df_analysis = st.session_state.get("df_analysis")
+        df = st.session_state["cleaned_df"]
+        model = st.session_state["trained_model"]
+        
+        if df_analysis is not None and "date" in df.columns:
+            feature_cols = st.session_state.get("feature_cols", [])
             
-            # Display model accuracy metrics
-            col_acc1, col_acc2, col_acc3 = st.columns(3)
-            with col_acc1:
-                st.metric("🎯 R² Score", f"{st.session_state.get('r2_score', 0):.4f}", 
-                         help="Closer to 1.0 means better predictions")
-            with col_acc2:
-                st.metric("📉 Mean Absolute Error", f"${st.session_state.get('mae', 0):,.2f}",
-                         help="Average prediction error in dollars")
-            with col_acc3:
-                # Calculate MAPE if possible
-                y_actual_full = st.session_state.get("y_actual_full")
-                y_predicted_full = st.session_state.get("y_predicted_full")
-                if y_actual_full is not None and len(y_actual_full) > 0:
-                    mape = np.mean(np.abs((y_actual_full - y_predicted_full) / y_actual_full)) * 100
-                    st.metric("📊 Avg. Accuracy", f"{100 - mape:.1f}%",
-                             help="Average prediction accuracy percentage")
+            if len(feature_cols) > 0:
+                # Use stored predictions or recalculate
+                if "y_predicted_full" in st.session_state:
+                    y_predicted = st.session_state["y_predicted_full"]
+                    y_actual = st.session_state["y_actual_full"]
                 else:
-                    st.metric("📊 Model Status", "Ready")
-            
-            st.info("💡 **Interpretation:** Higher R² (closer to 1.0) means more reliable predictions. Lower MAE means smaller prediction errors.")
-            
-            # ---------- ACTUAL VS PREDICTED CHART ----------
-            st.subheader("📈 Actual vs Predicted Revenue Over Time")
-            st.write("This chart shows how well our model predictions match actual historical revenue:")
-            
-            # Get stored transformed data
-            df_analysis = st.session_state.get("df_analysis")
-            df = st.session_state["cleaned_df"]
+                    X = df_analysis[feature_cols]
+                    y_actual = df["total_revenue"]
+                    y_predicted = model.predict(X)
+                
+                # Create dataframe with predictions
+                pred_df = df[["date"]].copy()
+                pred_df["Actual Revenue"] = y_actual.values
+                pred_df["Predicted Revenue"] = y_predicted
+                pred_df["date"] = pd.to_datetime(pred_df["date"])
+                pred_df = pred_df.sort_values("date")
+                
+                # Filter for last 6 months only
+                max_date = pred_df["date"].max()
+                six_months_ago = max_date - pd.Timedelta(days=182)
+                pred_df_last_6m = pred_df[pred_df["date"] >= six_months_ago]
+                
+                if not pred_df_last_6m.empty:
+                    # Make chart smaller using height parameter
+                    st.line_chart(pred_df_last_6m.set_index("date"), height=300)
+                    st.caption(f"📅 Last 6 months: {pred_df_last_6m['date'].min().strftime('%Y-%m-%d')} to {pred_df_last_6m['date'].max().strftime('%Y-%m-%d')}")
+                    
+                    # Calculate accuracy on last 6 months
+                    if len(pred_df_last_6m) >= 2:
+                        r2_6m = r2_score(pred_df_last_6m["Actual Revenue"], pred_df_last_6m["Predicted Revenue"])
+                        mae_6m = mean_absolute_error(pred_df_last_6m["Actual Revenue"], pred_df_last_6m["Predicted Revenue"])
+                        
+                        # Show accuracy metrics in a compact row
+                        col_metric1, col_metric2 = st.columns(2)
+                        with col_metric1:
+                            st.metric("📊 R² (Last 6M)", f"{r2_6m:.4f}", 
+                                     help="Closer to 1.0 = better predictions")
+                        with col_metric2:
+                            st.metric("💰 MAE (Last 6M)", f"${mae_6m:,.2f}",
+                                     help="Average prediction error")
+                        
+                        # Confidence indicator
+                        if r2_6m >= 0.8:
+                            st.success("✅ **High confidence** - Model is reliable for recent data")
+                        elif r2_6m >= 0.6:
+                            st.info("📊 **Moderate confidence** - Predictions are reasonably reliable")
+                        else:
+                            st.warning("⚠️ **Low confidence** - Consider retraining with more recent data")
+                else:
+                    st.info("Not enough data in the last 6 months to display chart.")
+                
+                st.markdown("---")
+        
+        # ========== PREDICTION INPUT SECTION ==========
+        st.subheader("🎯 Make New Predictions")
+        st.write("Enter ad spend values to predict revenue:")
+        
+        # Get category options if available
+        df = st.session_state["cleaned_df"]
+        has_category = 'category' in df.columns
+        
+        # Input columns
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            fb_spend = st.number_input("Facebook Spend ($)", min_value=0.0, value=1000.0, step=100.0, key="fb_input")
+        with col2:
+            instagram_spend = st.number_input("Instagram Spend ($)", min_value=0.0, value=1000.0, step=100.0, key="insta_input")
+        with col3:
+            tiktok_spend = st.number_input("TikTok Spend ($)", min_value=0.0, value=1000.0, step=100.0, key="tiktok_input")
+        
+        # Category selector (if available)
+        category_value = None
+        if has_category:
+            categories = df['category'].unique().tolist()
+            category_value = st.selectbox("Campaign Category", categories)
+        
+        if st.button("Predict Revenue", type="primary"):
             model = st.session_state["trained_model"]
             
-            if df_analysis is not None and "date" in df.columns:
-                feature_cols = st.session_state.get("feature_cols", [])
-                
-                if len(feature_cols) > 0:
-                    # Use stored predictions or recalculate
-                    if "y_predicted_full" in st.session_state:
-                        y_predicted = st.session_state["y_predicted_full"]
-                        y_actual = st.session_state["y_actual_full"]
-                    else:
-                        X = df_analysis[feature_cols]
-                        y_actual = df["total_revenue"]
-                        y_predicted = model.predict(X)
-                    
-                    # Create dataframe with predictions
-                    pred_df = df[["date"]].copy()
-                    pred_df["Actual Revenue"] = y_actual.values
-                    pred_df["Predicted Revenue"] = y_predicted
-                    pred_df["date"] = pd.to_datetime(pred_df["date"])
-                    pred_df = pred_df.sort_values("date")
-                    
-                    # Date range selector (default to last 6 months)
-                    min_date = pred_df["date"].min()
-                    max_date = pred_df["date"].max()
-                    default_start = max_date - pd.Timedelta(days=182)
-                    
-                    col_date1, col_date2 = st.columns(2)
-                    with col_date1:
-                        start_date = st.date_input("Start Date", value=default_start, min_value=min_date, max_value=max_date, key="pred_start_date")
-                    with col_date2:
-                        end_date = st.date_input("End Date", value=max_date, min_value=min_date, max_value=max_date, key="pred_end_date")
-                    
-                    # Filter based on selected dates
-                    mask = (pred_df["date"] >= pd.to_datetime(start_date)) & (pred_df["date"] <= pd.to_datetime(end_date))
-                    pred_df_filtered = pred_df[mask]
-                    
-                    if not pred_df_filtered.empty:
-                        st.line_chart(pred_df_filtered.set_index("date"))
-                        st.caption(f"📅 Showing data from {start_date} to {end_date}")
-                        
-                        # Calculate accuracy on selected range
-                        if len(pred_df_filtered) >= 2:
-                            r2_range = r2_score(pred_df_filtered["Actual Revenue"], pred_df_filtered["Predicted Revenue"])
-                            mae_range = mean_absolute_error(pred_df_filtered["Actual Revenue"], pred_df_filtered["Predicted Revenue"])
-                            
-                            col_a, col_b = st.columns(2)
-                            with col_a:
-                                st.metric("R² Score (selected period)", f"{r2_range:.4f}")
-                            with col_b:
-                                st.metric("MAE (selected period)", f"${mae_range:,.2f}")
-                            
-                            # Confidence indicator
-                            if r2_range >= 0.8:
-                                st.success("✅ **High confidence:** Model predictions are very reliable for this period.")
-                            elif r2_range >= 0.6:
-                                st.info("📊 **Moderate confidence:** Predictions are reasonably reliable.")
-                            else:
-                                st.warning("⚠️ **Low confidence:** Consider retraining model with more data.")
-                    else:
-                        st.warning("No data available for selected date range.")
-                    
-                    st.markdown("---")
+            # Make prediction
+            predicted_revenue = predict_revenue_lasso(
+                df, model, fb_spend, instagram_spend, tiktok_spend, category_value
+            )
             
-            # ========== PREDICTION INPUT SECTION ==========
-            st.subheader("🎯 Make New Predictions")
-            st.write("Enter ad spend values to predict revenue:")
+            # Calculate metrics
+            total_ad_spend = fb_spend + instagram_spend + tiktok_spend
+            roi = ((predicted_revenue - total_ad_spend) / total_ad_spend * 100) if total_ad_spend > 0 else 0
             
-            # Get category options if available
-            df = st.session_state["cleaned_df"]
-            has_category = 'category' in df.columns
+            # Display results
+            st.markdown("---")
+            st.subheader("📈 Prediction Results")
             
-            # Input columns
             col1, col2, col3 = st.columns(3)
-            
             with col1:
-                fb_spend = st.number_input("Facebook Spend ($)", min_value=0.0, value=1000.0, step=100.0, key="fb_input")
+                st.metric("Total Ad Spend", f"${total_ad_spend:,.2f}")
             with col2:
-                instagram_spend = st.number_input("Instagram Spend ($)", min_value=0.0, value=1000.0, step=100.0, key="insta_input")
+                st.metric("Predicted Revenue", f"${predicted_revenue:,.2f}", 
+                         delta=f"${predicted_revenue - total_ad_spend:,.2f}")
             with col3:
-                tiktok_spend = st.number_input("TikTok Spend ($)", min_value=0.0, value=1000.0, step=100.0, key="tiktok_input")
+                st.metric("ROI", f"{roi:.1f}%", 
+                         delta="Positive" if roi > 0 else "Negative",
+                         delta_color="normal" if roi > 0 else "inverse")
             
-            # Category selector (if available)
-            category_value = None
-            if has_category:
-                categories = df['category'].unique().tolist()
-                category_value = st.selectbox("Campaign Category", categories)
+            # ROI feedback
+            if roi < 0:
+                st.error("⚠️ Negative ROI predicted. Consider adjusting your ad spend allocation.")
+            elif roi > 100:
+                st.success("🎉 Excellent ROI predicted!")
+            elif roi > 50:
+                st.info("✅ Good ROI predicted!")
             
-            if st.button("Predict Revenue", type="primary"):
-                model = st.session_state["trained_model"]
+            # Show model quality badge
+            r2_score_val = st.session_state.get("r2_score", 0)
+            st.caption(f"🤖 Lasso Regression • R²: {r2_score_val:.3f}")
+            
+            # Show details
+            with st.expander("🔍 Show calculation details"):
+                st.write("**Adstock Values Used (carryover effect):**")
+                st.write(f"Facebook Adstock: ${fb_spend + 0.5 * adstock(df['fb_spend'].values)[-1] if len(df) > 0 else fb_spend:,.2f}")
+                st.write(f"Instagram Adstock: ${instagram_spend + 0.5 * adstock(df['instagram_spend'].values)[-1] if len(df) > 0 else instagram_spend:,.2f}")
+                st.write(f"TikTok Adstock: ${tiktok_spend + 0.5 * adstock(df['tiktok_spend'].values)[-1] if len(df) > 0 else tiktok_spend:,.2f}")
                 
-                # Make prediction
-                predicted_revenue = predict_revenue_lasso(
-                    df, model, fb_spend, instagram_spend, tiktok_spend, category_value
-                )
+                if has_category:
+                    st.write(f"**Selected Category:** {category_value}")
                 
-                # Calculate metrics
-                total_ad_spend = fb_spend + instagram_spend + tiktok_spend
-                roi = ((predicted_revenue - total_ad_spend) / total_ad_spend * 100) if total_ad_spend > 0 else 0
-                
-                # Display results
-                st.markdown("---")
-                st.subheader("📈 Prediction Results")
-                
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric("Total Ad Spend", f"${total_ad_spend:,.2f}")
-                with col2:
-                    st.metric("Predicted Revenue", f"${predicted_revenue:,.2f}", 
-                             delta=f"${predicted_revenue - total_ad_spend:,.2f}")
-                with col3:
-                    st.metric("ROI", f"{roi:.1f}%", 
-                             delta="Positive" if roi > 0 else "Negative",
-                             delta_color="normal" if roi > 0 else "inverse")
-                
-                # ROI feedback
-                if roi < 0:
-                    st.error("⚠️ Negative ROI predicted. Consider adjusting your ad spend allocation.")
-                elif roi > 100:
-                    st.success("🎉 Excellent ROI predicted!")
-                elif roi > 50:
-                    st.info("✅ Good ROI predicted!")
-                
-                # Show model quality badge with confidence note
-                r2_score_val = st.session_state.get("r2_score", 0)
-                confidence_text = "High confidence" if r2_score_val >= 0.8 else "Moderate confidence" if r2_score_val >= 0.6 else "Low confidence"
-                st.caption(f"🤖 Lasso Regression Model • R² Score: {r2_score_val:.3f} • {confidence_text}")
-                
-                # Show details
-                with st.expander("🔍 Show calculation details"):
-                    st.write("**Adstock Values Used (carryover effect):**")
-                    st.write(f"Facebook Adstock: ${fb_spend + 0.5 * adstock(df['fb_spend'].values)[-1] if len(df) > 0 else fb_spend:,.2f}")
-                    st.write(f"Instagram Adstock: ${instagram_spend + 0.5 * adstock(df['instagram_spend'].values)[-1] if len(df) > 0 else instagram_spend:,.2f}")
-                    st.write(f"TikTok Adstock: ${tiktok_spend + 0.5 * adstock(df['tiktok_spend'].values)[-1] if len(df) > 0 else tiktok_spend:,.2f}")
-                    
-                    if has_category:
-                        st.write(f"**Selected Category:** {category_value}")
-                    
-                    st.write("**Model Interpretation:**")
-                    st.write("- Lasso Regression automatically selects important features")
-                    st.write("- Adstock captures delayed/recurring effects of ad spend")
-                    st.write("- Category dummies account for campaign type differences")
+                st.write("**Model Interpretation:**")
+                st.write("- Lasso Regression automatically selects important features")
+                st.write("- Adstock captures delayed/recurring effects of ad spend")
+                st.write("- Category dummies account for campaign type differences")
 
 # ---------- ANALYZE SECTION ----------
 with st.expander("📊 Analyze", expanded=False):
