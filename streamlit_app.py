@@ -449,29 +449,28 @@ with st.expander("📊 Analyze", expanded=False):
             col1, col2, col3 = st.columns(3)
             with col1:
                 st.metric("💰 Total Ad Spend", f"${total_ad_spend:,.2f}")
-                if st.checkbox("View spend by channel", key="show_channel_spend"):
-                    channel_spend = df[["fb_spend","instagram_spend","tiktok_spend"]].sum().to_frame(name="Total Spend")
-                    st.dataframe(channel_spend)
             with col2:
                 st.metric("📊 Total Revenue", f"${total_revenue:,.2f}")
-                if st.checkbox("View revenue timeline", key="show_revenue_timeline"):
-                    if "date" in df.columns:
-                        revenue_trend = df.groupby("date")["total_revenue"].sum().reset_index()
-                        st.line_chart(revenue_trend.set_index("date"))
-                if st.checkbox("View revenue by category", key="show_revenue_category"):
-                    if "category" in df.columns:
-                        category_revenue = df.groupby("category")["total_revenue"].sum().sort_values(ascending=False)
-                        st.dataframe(category_revenue)
             with col3:
                 st.metric("📈 Total Campaigns", total_campaigns)
+
+            # ---------- REVENUE BY CATEGORY (Vertical Bar Chart) ----------
+            if "category" in df.columns:
+                st.subheader("📊 Total Revenue by Campaign Category")
+                category_revenue = df.groupby("category")["total_revenue"].sum().sort_values(ascending=False)
+                st.bar_chart(category_revenue)
+            else:
+                st.info("Category column not found in dataset.")
 
             # ---------- HEATMAP: Ad Spend by Category and Channel ----------
             st.subheader("Heatmap – Ad Spend by Campaign Category & Channel")
             if "category" in df.columns:
-                # Option to filter by timeframe
+                # Option to filter by timeframe - FIXED to use df_analysis date
                 timeframe = st.selectbox("Select timeframe for heatmap", 
                                          ["All time","Past Week","Past Month","Past 6 Months","Past Year"],
                                          key="heatmap_timeframe")
+                
+                # Use the original df for filtering (has date column)
                 filtered_df = df.copy()
                 if "date" in df.columns:
                     # Convert date to datetime if not already
@@ -479,21 +478,23 @@ with st.expander("📊 Analyze", expanded=False):
                     today = pd.Timestamp.now()
                     
                     if timeframe == "Past Week":
-                        filtered_df = filtered_df[filtered_df["date"] >= today - pd.Timedelta(days=7)]
+                        cutoff_date = today - pd.Timedelta(days=7)
+                        filtered_df = filtered_df[filtered_df["date"] >= cutoff_date]
                     elif timeframe == "Past Month":
-                        filtered_df = filtered_df[filtered_df["date"] >= today - pd.Timedelta(days=30)]
+                        cutoff_date = today - pd.Timedelta(days=30)
+                        filtered_df = filtered_df[filtered_df["date"] >= cutoff_date]
                     elif timeframe == "Past 6 Months":
-                        filtered_df = filtered_df[filtered_df["date"] >= today - pd.Timedelta(days=182)]
+                        cutoff_date = today - pd.Timedelta(days=182)
+                        filtered_df = filtered_df[filtered_df["date"] >= cutoff_date]
                     elif timeframe == "Past Year":
-                        filtered_df = filtered_df[filtered_df["date"] >= today - pd.Timedelta(days=365)]
+                        cutoff_date = today - pd.Timedelta(days=365)
+                        filtered_df = filtered_df[filtered_df["date"] >= cutoff_date]
 
                 # Pivot table for heatmap (showing ad spend, not revenue)
                 heatmap_data = filtered_df.groupby("category")[["fb_spend","instagram_spend","tiktok_spend"]].sum()
                 
                 if not heatmap_data.empty:
-                    st.dataframe(heatmap_data)
-
-                    # Optional: colored heatmap
+                    # Only show heatmap, no extra table
                     try:
                         import seaborn as sns
                         import matplotlib.pyplot as plt
@@ -506,6 +507,8 @@ with st.expander("📊 Analyze", expanded=False):
                         st.info("Install seaborn and matplotlib for heatmap visualization: pip install seaborn matplotlib")
                 else:
                     st.info("No data available for selected timeframe")
+            else:
+                st.info("Category column not found for heatmap.")
 
             # ---------- CHANNEL CONTRIBUTION (Feature Importance) ----------
             st.subheader("📊 Channel Contribution Analysis")
@@ -521,11 +524,31 @@ with st.expander("📊 Analyze", expanded=False):
                 channel_features = coef_df[coef_df['Feature'].str.contains('adstock|spend', case=False)]
                 
                 if not channel_features.empty:
-                    # Show top contributing channels
-                    st.write("**Impact of each channel on revenue:**")
-                    st.dataframe(channel_features.sort_values('Coefficient', ascending=False))
+                    # Create alias mapping
+                    alias_mapping = {
+                        'fb_spend': 'Facebook Spend',
+                        'instagram_spend': 'Instagram Spend',
+                        'tiktok_spend': 'TikTok Spend',
+                        'fb_adstock': 'Facebook AdStock',
+                        'insta_adstock': 'Instagram AdStock',
+                        'tiktok_adstock': 'TikTok AdStock'
+                    }
                     
-                    # Visualize coefficients
-                    st.bar_chart(channel_features.set_index('Feature')['Coefficient'])
+                    # Apply aliases
+                    channel_features['Feature'] = channel_features['Feature'].replace(alias_mapping)
+                    
+                    # Sort by coefficient
+                    channel_features = channel_features.sort_values('Coefficient', ascending=False)
+                    
+                    # Display table with color gradient on Coefficient column
+                    st.dataframe(
+                        channel_features.style.background_gradient(subset=['Coefficient'], cmap='RdYlGn', vmin=-1, vmax=1),
+                        use_container_width=True
+                    )
+                    
+                    # Simple Adstock definition
+                    st.caption("💡 **What is Adstock?** Adstock measures the *carryover effect* of advertising - how past ad spend continues to influence revenue in future days. Higher Adstock means ads have longer-lasting impact.")
                 else:
                     st.info("No channel-specific coefficients found")
+            else:
+                st.info("Model coefficients not available")
