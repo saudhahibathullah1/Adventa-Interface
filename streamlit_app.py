@@ -405,10 +405,10 @@ if uploaded_file is not None:
             col_acc1, col_acc2, col_acc3, col_acc4 = st.columns(4)
             with col_acc1:
                 st.metric("🎯 R² Score", f"{st.session_state.get('r2_score', 0):.3f}")
-                st.caption("Proportion of variance explained by the model (0-1, higher is better)")
+                
             with col_acc2:
                 st.metric("📉 MAE", f"${st.session_state.get('mae', 0):,.0f}")
-                st.caption("Average prediction error in dollars (lower is better)")
+                
             with col_acc3:
                 y_actual_full = st.session_state.get("y_actual_full")
                 y_predicted_full = st.session_state.get("y_predicted_full")
