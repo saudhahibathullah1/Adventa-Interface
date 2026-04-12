@@ -4,16 +4,154 @@ import numpy as np
 from sklearn.linear_model import Lasso
 from sklearn.metrics import r2_score, mean_absolute_error
 from sklearn.model_selection import train_test_split
+import plotly.graph_objects as go
+import plotly.express as px
+from plotly.subplots import make_subplots
+import matplotlib.pyplot as plt
+import seaborn as sns
 
-st.title("🎈 Adventa")
-st.write("Optimize your advertisement campaign spend!")
-
-st.title("Data Import - Cleaning & Analyzing")
-
-uploaded_file = st.file_uploader(
-    "Upload Advertising Dataset (CSV)",
-    type=["csv"]
+# ========== PAGE CONFIGURATION ==========
+st.set_page_config(
+    page_title="Adventa - Campaign Optimizer",
+    page_icon="🚀",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
+
+# ========== CUSTOM CSS ==========
+st.markdown("""
+<style>
+    /* Modern Gradient Background */
+    .stApp {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+    
+    /* Glassmorphism Effect for Main Containers */
+    .main > div {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        border-radius: 20px;
+        padding: 20px;
+        margin: 10px 0;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+    }
+    
+    /* Custom Card Styling */
+    .custom-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 15px;
+        padding: 20px;
+        color: white;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        transition: transform 0.3s;
+    }
+    
+    .custom-card:hover {
+        transform: translateY(-5px);
+    }
+    
+    /* Metric Cards */
+    .metric-card {
+        background: white;
+        border-radius: 15px;
+        padding: 20px;
+        text-align: center;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        border: 1px solid rgba(102, 126, 234, 0.2);
+        transition: all 0.3s;
+    }
+    
+    .metric-card:hover {
+        box-shadow: 0 5px 20px rgba(102, 126, 234, 0.3);
+        transform: translateY(-3px);
+    }
+    
+    /* Button Styling */
+    .stButton > button {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        border-radius: 10px;
+        padding: 10px 30px;
+        font-weight: 600;
+        transition: all 0.3s;
+        width: 100%;
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+    }
+    
+    /* Expander Styling */
+    .streamlit-expanderHeader {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 10px;
+        font-weight: 600;
+    }
+    
+    /* Tab Styling */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 10px;
+        padding: 10px 20px;
+        font-weight: 600;
+    }
+    
+    /* Headers */
+    h1, h2, h3 {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        font-weight: 800;
+    }
+    
+    /* Sidebar */
+    .css-1d391kg {
+        background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+    }
+    
+    /* Success/Warning/Info Messages */
+    .stAlert {
+        border-radius: 10px;
+        border-left: 4px solid;
+    }
+    
+    /* Dataframe */
+    .dataframe {
+        border-radius: 10px;
+        overflow: hidden;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# ========== HEADER SECTION ==========
+col_logo, col_title = st.columns([1, 4])
+with col_logo:
+    st.markdown("# 🚀")
+with col_title:
+    st.markdown("# Adventa")
+    st.markdown("### AI-Powered Campaign Spend Optimizer")
+
+st.markdown("---")
+
+# ========== DATA IMPORT SECTION ==========
+with st.container():
+    st.markdown("## 📁 Data Import")
+    st.markdown("Upload your campaign data to get started")
+    
+    uploaded_file = st.file_uploader(
+        "Choose CSV file",
+        type=["csv"],
+        help="Upload CSV with columns: date, category, fb_spend, instagram_spend, tiktok_spend, total_revenue"
+    )
 
 def adstock(x, decay=0.5):
     """Calculate adstock transformation for carryover effect"""
@@ -176,76 +314,102 @@ def predict_revenue_lasso(df, model, fb_spend, instagram_spend, tiktok_spend, ca
 if uploaded_file is not None:
     raw_df = pd.read_csv(uploaded_file)
 
-    st.subheader("Raw Data Preview")
-    st.dataframe(raw_df.head())
+    with st.expander("📄 Raw Data Preview", expanded=False):
+        st.dataframe(raw_df.head(), use_container_width=True)
 
     # ---------- CLEAN DATA ----------
-    with st.expander("🧹 Clean Dataset", expanded=False):
-        if st.button("Run Clean Dataset"):
-            cleaned_df = clean_ad_data(raw_df)
-            st.session_state["cleaned_df"] = cleaned_df
+    with st.expander("🧹 Data Processing & Model Training", expanded=False):
+        col1, col2 = st.columns([1, 3])
+        with col1:
+            clean_button = st.button("🚀 Process Data & Train Model", use_container_width=True)
+        
+        if clean_button or "cleaned_df" in st.session_state:
+            if clean_button:
+                with st.spinner("Processing data and training AI model..."):
+                    cleaned_df = clean_ad_data(raw_df)
+                    st.session_state["cleaned_df"] = cleaned_df
+                    
+                    # Train Lasso model after cleaning
+                    model, error, r2, mae = train_prediction_model(cleaned_df)
+                    
+                    if model:
+                        st.session_state["trained_model"] = model
+                        st.session_state["model_type"] = "lasso"
+                        st.success("✅ Dataset processed and AI model trained successfully!")
+                        
+                        # Show model quality indicator
+                        if r2 >= 0.9:
+                            st.balloons()
+                            st.success("🎯 Excellent model! R² > 0.9 - Very strong predictive power")
+                        elif r2 >= 0.7:
+                            st.info("👍 Good model - Ready for predictions")
+                        else:
+                            st.warning("⚠️ Model could be improved - Consider adding more features or data")
+                    else:
+                        st.error(f"Model training failed: {error}")
+                        st.session_state["model_type"] = "none"
             
-            # Train Lasso model after cleaning
-            model, error, r2, mae = train_prediction_model(cleaned_df)
-            
-            if model:
-                st.session_state["trained_model"] = model
-                st.session_state["model_type"] = "lasso"
-                st.success(f"Dataset cleaned and Lasso Regression model trained successfully ✅")
-                st.info(f"📊 Model Performance: R² Score = {r2:.4f} | MAE = ${mae:,.2f}")
+            if "cleaned_df" in st.session_state:
+                cleaned_df = st.session_state["cleaned_df"]
                 
-                # Show model quality indicator
-                if r2 >= 0.9:
-                    st.balloons()
-                    st.success("🎯 Excellent model! R² > 0.9 - Very strong predictive power")
-                elif r2 >= 0.7:
-                    st.info("👍 Good model - Ready for predictions")
-                else:
-                    st.warning("⚠️ Model could be improved - Consider adding more features or data")
-            else:
-                st.error(f"Model training failed: {error}")
-                st.session_state["model_type"] = "none"
-            
-            # Preview cleaned data
-            st.subheader("Cleaned Data Preview (First 15 Rows)")
-            st.dataframe(cleaned_df.head(15))
-            
-            # Show category breakdown if available
-            if 'category' in cleaned_df.columns:
-                st.subheader("📁 Category Distribution")
-                category_counts = cleaned_df['category'].value_counts()
-                st.dataframe(category_counts)
-            
-            # Download button
-            csv = cleaned_df.to_csv(index=False).encode("utf-8")
-            st.download_button(
-                label="Download Cleaned Dataset",
-                data=csv,
-                file_name="adventa_cleaned_data.csv",
-                mime="text/csv"
-            )
+                # Display metrics in columns
+                col_metric1, col_metric2, col_metric3, col_metric4 = st.columns(4)
+                with col_metric1:
+                    st.metric("Total Rows", len(cleaned_df))
+                with col_metric2:
+                    st.metric("Total Columns", len(cleaned_df.columns))
+                with col_metric3:
+                    if "total_revenue" in cleaned_df.columns:
+                        st.metric("Total Revenue", f"${cleaned_df['total_revenue'].sum():,.0f}")
+                with col_metric4:
+                    if "trained_model" in st.session_state:
+                        st.metric("Model R²", f"{st.session_state.get('r2_score', 0):.3f}")
+                
+                # Preview cleaned data
+                st.subheader("Cleaned Data Preview")
+                st.dataframe(cleaned_df.head(10), use_container_width=True)
+                
+                # Show category breakdown if available
+                if 'category' in cleaned_df.columns:
+                    st.subheader("Category Distribution")
+                    category_counts = cleaned_df['category'].value_counts()
+                    fig = px.bar(x=category_counts.values, y=category_counts.index, 
+                                 orientation='h', color=category_counts.values,
+                                 color_continuous_scale='Viridis')
+                    fig.update_layout(height=300, margin=dict(l=0, r=0, t=0, b=0))
+                    st.plotly_chart(fig, use_container_width=True)
+                
+                # Download button
+                csv = cleaned_df.to_csv(index=False).encode("utf-8")
+                st.download_button(
+                    label="📥 Download Processed Dataset",
+                    data=csv,
+                    file_name="adventa_processed_data.csv",
+                    mime="text/csv"
+                )
 
 # ---------- PREDICT SECTION ----------
-with st.expander("🎯 Predict Revenue", expanded=False):
+with st.expander("🎯 Predict Campaign Performance", expanded=False):
     if "cleaned_df" not in st.session_state:
-        st.warning("Please clean the dataset first to train the model.")
+        st.warning("⚠️ Please process your data and train the model first.")
     elif st.session_state.get("model_type") != "lasso":
-        st.warning("Model not trained successfully. Please re-upload and clean data.")
+        st.warning("⚠️ Model not trained successfully. Please re-upload and process data.")
     else:
         # ========== MODEL ACCURACY INTRODUCTION ==========
-        st.subheader("📊 Model Accuracy Overview")
+        st.markdown("### 📊 Model Performance Metrics")
         
-        # Display model accuracy metrics in a single row
-        col_acc1, col_acc2, col_acc3 = st.columns(3)
+        # Display model accuracy metrics in styled columns
+        col_acc1, col_acc2, col_acc3, col_acc4 = st.columns(4)
         with col_acc1:
-            st.metric("🎯 R² Score", f"{st.session_state.get('r2_score', 0):.4f}")
+            st.metric("🎯 R² Score", f"{st.session_state.get('r2_score', 0):.3f}", 
+                     help="Closer to 1.0 = Better predictions")
         with col_acc2:
-            st.metric("📉 Mean Absolute Error", f"${st.session_state.get('mae', 0):,.2f}")
+            st.metric("📉 MAE", f"${st.session_state.get('mae', 0):,.0f}",
+                     help="Average prediction error")
         with col_acc3:
             y_actual_full = st.session_state.get("y_actual_full")
             y_predicted_full = st.session_state.get("y_predicted_full")
             if y_actual_full is not None and len(y_actual_full) > 0:
-                # Avoid division by zero
                 non_zero_mask = y_actual_full != 0
                 if np.any(non_zero_mask):
                     mape = np.mean(np.abs((y_actual_full[non_zero_mask] - y_predicted_full[non_zero_mask]) / y_actual_full[non_zero_mask])) * 100
@@ -254,9 +418,12 @@ with st.expander("🎯 Predict Revenue", expanded=False):
                     st.metric("📊 Status", "Ready")
             else:
                 st.metric("📊 Status", "Ready")
+        with col_acc4:
+            confidence_level = "High" if st.session_state.get('r2_score', 0) > 0.8 else "Medium" if st.session_state.get('r2_score', 0) > 0.6 else "Low"
+            st.metric("💪 Confidence", confidence_level)
         
-        # ---------- COMPACT ACTUAL VS PREDICTED (LAST 6 MONTHS ONLY) ----------
-        st.subheader("📈 Actual vs Predicted (Last 6 Months)")
+        # ---------- INTERACTIVE ACTUAL VS PREDICTED CHART ----------
+        st.markdown("### 📈 Actual vs Predicted Revenue")
         
         # Get stored data
         df = st.session_state["cleaned_df"]
@@ -287,7 +454,7 @@ with st.expander("🎯 Predict Revenue", expanded=False):
             y_predicted_full = st.session_state["y_predicted_full"]
             y_actual_full = st.session_state["y_actual_full"]
         
-        # Create dataframe with predictions
+        # Create interactive plotly chart
         if "date" in df.columns and len(df) > 0:
             pred_df = pd.DataFrame({
                 'date': pd.to_datetime(df['date']),
@@ -296,131 +463,162 @@ with st.expander("🎯 Predict Revenue", expanded=False):
             })
             pred_df = pred_df.sort_values('date')
             
-            # Filter for last 6 months only
+            # Date range filter
             max_date = pred_df['date'].max()
-            six_months_ago = max_date - pd.Timedelta(days=182)
-            pred_df_last_6m = pred_df[pred_df['date'] >= six_months_ago]
+            min_date = pred_df['date'].min()
+            date_range = st.slider(
+                "Select Date Range",
+                min_value=min_date,
+                max_value=max_date,
+                value=(min_date, max_date),
+                format="YYYY-MM-DD"
+            )
             
-            # Show data info for debugging
-            st.caption(f"📊 Total data points: {len(pred_df)} | Last 6 months: {len(pred_df_last_6m)} points")
+            filtered_df = pred_df[(pred_df['date'] >= date_range[0]) & (pred_df['date'] <= date_range[1])]
             
-            if not pred_df_last_6m.empty:
-                # Make chart smaller using height parameter
-                st.line_chart(pred_df_last_6m.set_index('date')[['Actual Revenue', 'Predicted Revenue']], height=300)
-                st.caption(f"📅 Last 6 months: {pred_df_last_6m['date'].min().strftime('%Y-%m-%d')} to {pred_df_last_6m['date'].max().strftime('%Y-%m-%d')}")
+            # Create interactive chart
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=filtered_df['date'], y=filtered_df['Actual Revenue'],
+                                    mode='lines+markers', name='Actual Revenue',
+                                    line=dict(color='#667eea', width=2),
+                                    marker=dict(size=6)))
+            fig.add_trace(go.Scatter(x=filtered_df['date'], y=filtered_df['Predicted Revenue'],
+                                    mode='lines+markers', name='Predicted Revenue',
+                                    line=dict(color='#764ba2', width=2, dash='dash'),
+                                    marker=dict(size=6, symbol='square')))
+            
+            fig.update_layout(
+                title="Model Predictions vs Actual Performance",
+                xaxis_title="Date",
+                yaxis_title="Revenue ($)",
+                hovermode='x unified',
+                height=400,
+                margin=dict(l=0, r=0, t=40, b=0),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Calculate accuracy on selected range
+            if len(filtered_df) >= 2:
+                r2_range = r2_score(filtered_df['Actual Revenue'], filtered_df['Predicted Revenue'])
+                mae_range = mean_absolute_error(filtered_df['Actual Revenue'], filtered_df['Predicted Revenue'])
                 
-                # Calculate accuracy on last 6 months
-                if len(pred_df_last_6m) >= 2:
-                    from sklearn.metrics import r2_score, mean_absolute_error
-                    r2_6m = r2_score(pred_df_last_6m['Actual Revenue'], pred_df_last_6m['Predicted Revenue'])
-                    mae_6m = mean_absolute_error(pred_df_last_6m['Actual Revenue'], pred_df_last_6m['Predicted Revenue'])
-                    
-                    # Show accuracy metrics in a compact row
-                    col_metric1, col_metric2 = st.columns(2)
-                    with col_metric1:
-                        st.metric("📊 R² (Last 6M)", f"{r2_6m:.4f}", 
-                                 help="Closer to 1.0 = better predictions")
-                    with col_metric2:
-                        st.metric("💰 MAE (Last 6M)", f"${mae_6m:,.2f}",
-                                 help="Average prediction error")
-                    
-                    # Confidence indicator
-                    if r2_6m >= 0.8:
-                        st.success("✅ **High confidence** - Model is reliable for recent data")
-                    elif r2_6m >= 0.6:
-                        st.info("📊 **Moderate confidence** - Predictions are reasonably reliable")
-                    else:
-                        st.warning("⚠️ **Low confidence** - Consider retraining with more recent data")
-                else:
-                    st.info("Need at least 2 data points in last 6 months to calculate accuracy.")
-            else:
-                st.warning(f"No data available in the last 6 months. Earliest date: {pred_df['date'].min().strftime('%Y-%m-%d')}, Latest: {max_date.strftime('%Y-%m-%d')}")
+                col_metric1, col_metric2 = st.columns(2)
+                with col_metric1:
+                    st.metric("R² (Selected Range)", f"{r2_range:.3f}")
+                with col_metric2:
+                    st.metric("MAE (Selected Range)", f"${mae_range:,.0f}")
         else:
             st.warning("Date column not found or empty in dataset.")
         
         st.markdown("---")
         
         # ========== PREDICTION INPUT SECTION ==========
-        st.subheader("🎯 Make New Predictions")
-        st.write("Enter ad spend values to predict revenue:")
+        st.markdown("### 🎯 Make New Predictions")
+        st.markdown("Enter your proposed ad spend to forecast revenue")
         
         # Get category options if available
         has_category = 'category' in df.columns
         
-        # Input columns
+        # Input columns with better styling
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            fb_spend = st.number_input("Facebook Spend ($)", min_value=0.0, value=1000.0, step=100.0, key="fb_input")
+            fb_spend = st.number_input("💰 Facebook Spend ($)", min_value=0.0, value=1000.0, step=100.0, key="fb_input")
         with col2:
-            instagram_spend = st.number_input("Instagram Spend ($)", min_value=0.0, value=1000.0, step=100.0, key="insta_input")
+            instagram_spend = st.number_input("📸 Instagram Spend ($)", min_value=0.0, value=1000.0, step=100.0, key="insta_input")
         with col3:
-            tiktok_spend = st.number_input("TikTok Spend ($)", min_value=0.0, value=1000.0, step=100.0, key="tiktok_input")
+            tiktok_spend = st.number_input("🎵 TikTok Spend ($)", min_value=0.0, value=1000.0, step=100.0, key="tiktok_input")
         
         # Category selector (if available)
         category_value = None
         if has_category:
             categories = df['category'].unique().tolist()
-            category_value = st.selectbox("Campaign Category", categories)
+            category_value = st.selectbox("📁 Campaign Category", categories)
         
-        if st.button("Predict Revenue", type="primary"):
+        if st.button("🔮 Predict Revenue", type="primary", use_container_width=True):
             model = st.session_state["trained_model"]
             
             # Make prediction
-            predicted_revenue = predict_revenue_lasso(
-                df, model, fb_spend, instagram_spend, tiktok_spend, category_value
-            )
+            with st.spinner("Calculating prediction..."):
+                predicted_revenue = predict_revenue_lasso(
+                    df, model, fb_spend, instagram_spend, tiktok_spend, category_value
+                )
             
             # Calculate metrics
             total_ad_spend = fb_spend + instagram_spend + tiktok_spend
             roi = ((predicted_revenue - total_ad_spend) / total_ad_spend * 100) if total_ad_spend > 0 else 0
             
-            # Display results
+            # Display results in styled cards
             st.markdown("---")
-            st.subheader("📈 Prediction Results")
+            st.markdown("### 📈 Prediction Results")
             
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Total Ad Spend", f"${total_ad_spend:,.2f}")
-            with col2:
-                st.metric("Predicted Revenue", f"${predicted_revenue:,.2f}", 
+            # Create gauge chart for ROI
+            fig_gauge = go.Figure(go.Indicator(
+                mode = "gauge+number+delta",
+                value = roi,
+                title = {'text': "Return on Investment (ROI)"},
+                delta = {'reference': 0, 'increasing': {'color': "green"}, 'decreasing': {'color': "red"}},
+                gauge = {
+                    'axis': {'range': [None, 200]},
+                    'bar': {'color': "#667eea"},
+                    'steps': [
+                        {'range': [0, 50], 'color': "lightgray"},
+                        {'range': [50, 100], 'color': "gray"}
+                    ],
+                    'threshold': {
+                        'line': {'color': "red", 'width': 4},
+                        'thickness': 0.75,
+                        'value': 0
+                    }
+                }
+            ))
+            
+            fig_gauge.update_layout(height=250, margin=dict(l=0, r=0, t=40, b=0))
+            
+            col_result1, col_result2 = st.columns([1, 1])
+            with col_result1:
+                st.metric("💰 Total Ad Spend", f"${total_ad_spend:,.2f}")
+                st.metric("📊 Predicted Revenue", f"${predicted_revenue:,.2f}", 
                          delta=f"${predicted_revenue - total_ad_spend:,.2f}")
-            with col3:
-                st.metric("ROI", f"{roi:.1f}%", 
-                         delta="Positive" if roi > 0 else "Negative",
-                         delta_color="normal" if roi > 0 else "inverse")
+            with col_result2:
+                st.plotly_chart(fig_gauge, use_container_width=True)
             
-            # ROI feedback
+            # ROI feedback with styling
             if roi < 0:
                 st.error("⚠️ Negative ROI predicted. Consider adjusting your ad spend allocation.")
             elif roi > 100:
-                st.success("🎉 Excellent ROI predicted!")
+                st.success("🎉 Excellent ROI predicted! This campaign looks very promising.")
             elif roi > 50:
-                st.info("✅ Good ROI predicted!")
+                st.info("✅ Good ROI predicted! Solid campaign performance expected.")
+            elif roi > 20:
+                st.info("📈 Positive ROI predicted. Good potential for this campaign.")
+            else:
+                st.warning("📊 Moderate ROI predicted. Consider optimizing your budget allocation.")
             
-            # Show model quality badge
-            r2_score_val = st.session_state.get("r2_score", 0)
-            st.caption(f"🤖 Lasso Regression • R²: {r2_score_val:.3f}")
-            
-            # Show details
-            with st.expander("🔍 Show calculation details"):
-                st.write("**Adstock Values Used (carryover effect):**")
-                st.write(f"Facebook Adstock: ${fb_spend + 0.5 * adstock(df['fb_spend'].values)[-1] if len(df) > 0 else fb_spend:,.2f}")
-                st.write(f"Instagram Adstock: ${instagram_spend + 0.5 * adstock(df['instagram_spend'].values)[-1] if len(df) > 0 else instagram_spend:,.2f}")
-                st.write(f"TikTok Adstock: ${tiktok_spend + 0.5 * adstock(df['tiktok_spend'].values)[-1] if len(df) > 0 else tiktok_spend:,.2f}")
+            # Show details in expander
+            with st.expander("🔍 View Detailed Calculation"):
+                st.markdown("**Adstock Values (Carryover Effect):**")
+                col_detail1, col_detail2, col_detail3 = st.columns(3)
+                with col_detail1:
+                    st.metric("Facebook Adstock", f"${fb_spend + 0.5 * adstock(df['fb_spend'].values)[-1] if len(df) > 0 else fb_spend:,.2f}")
+                with col_detail2:
+                    st.metric("Instagram Adstock", f"${instagram_spend + 0.5 * adstock(df['instagram_spend'].values)[-1] if len(df) > 0 else instagram_spend:,.2f}")
+                with col_detail3:
+                    st.metric("TikTok Adstock", f"${tiktok_spend + 0.5 * adstock(df['tiktok_spend'].values)[-1] if len(df) > 0 else tiktok_spend:,.2f}")
                 
                 if has_category:
-                    st.write(f"**Selected Category:** {category_value}")
+                    st.markdown(f"**Selected Category:** {category_value}")
                 
-                st.write("**Model Interpretation:**")
-                st.write("- Lasso Regression automatically selects important features")
-                st.write("- Adstock captures delayed/recurring effects of ad spend")
-                st.write("- Category dummies account for campaign type differences")
-                
+                st.markdown("**Model Interpretation:**")
+                st.markdown("- Lasso Regression automatically selects important features")
+                st.markdown("- Adstock captures delayed/recurring effects of ad spend")
+                st.markdown("- Category dummies account for campaign type differences")
+        
 # ---------- ANALYZE SECTION ----------
-with st.expander("📊 Analyze", expanded=False):
+with st.expander("📊 Campaign Analytics Dashboard", expanded=False):
     if "cleaned_df" not in st.session_state or "trained_model" not in st.session_state:
-        st.warning("Please clean the dataset and train the model first.")
+        st.warning("⚠️ Please process your data and train the model first to see analytics.")
     else:
         df = st.session_state["cleaned_df"]
         model = st.session_state["trained_model"]
@@ -444,182 +642,160 @@ with st.expander("📊 Analyze", expanded=False):
         total_revenue = df["total_revenue"].sum()
         total_ad_spend = df[["fb_spend","instagram_spend","tiktok_spend"]].sum().sum()
         total_campaigns = len(df)
+        avg_roi = ((total_revenue - total_ad_spend) / total_ad_spend * 100) if total_ad_spend > 0 else 0
 
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.metric("💰 Total Ad Spend", f"${total_ad_spend:,.2f}")
         with col2:
             st.metric("📊 Total Revenue", f"${total_revenue:,.2f}")
         with col3:
             st.metric("📈 Total Campaigns", total_campaigns)
+        with col4:
+            st.metric("🎯 Average ROI", f"{avg_roi:.1f}%", 
+                     delta="Positive" if avg_roi > 0 else "Negative")
 
-        # ---------- REVENUE BY CATEGORY (Horizontal Bar Chart) ----------
-        if "category" in df.columns:
-            st.subheader("📊 Total Revenue by Campaign Category")
-            category_revenue = df.groupby("category")["total_revenue"].sum().sort_values(ascending=True)
-            
-            # Create horizontal bar chart using matplotlib
-            try:
-                import matplotlib.pyplot as plt
+        # Create tabs for different analytics
+        tab1, tab2, tab3, tab4 = st.tabs(["💰 Revenue Analysis", "📈 Time Series", "🔥 Channel Performance", "🎯 Channel Contribution"])
+        
+        with tab1:
+            if "category" in df.columns:
+                st.markdown("### Total Revenue by Campaign Category")
+                category_revenue = df.groupby("category")["total_revenue"].sum().sort_values(ascending=True)
                 
-                fig, ax = plt.subplots(figsize=(10, 6))
-                bars = ax.barh(category_revenue.index, category_revenue.values, color='skyblue')
-                ax.set_xlabel('Total Revenue ($)')
-                ax.set_ylabel('Campaign Category')
-                ax.set_title('Total Revenue by Campaign Category')
+                fig = px.bar(x=category_revenue.values, y=category_revenue.index, 
+                            orientation='h', color=category_revenue.values,
+                            color_continuous_scale='Viridis',
+                            text=category_revenue.values)
+                fig.update_traces(texttemplate='$%{text:,.0f}', textposition='outside')
+                fig.update_layout(height=400, margin=dict(l=0, r=0, t=0, b=0),
+                                 xaxis_title="Total Revenue ($)",
+                                 yaxis_title="Campaign Category")
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("Category column not found in dataset.")
+        
+        with tab2:
+            if "date" in df.columns:
+                st.markdown("### Revenue vs Ad Spend Over Time")
                 
-                # Add value labels on bars
-                for i, (bar, value) in enumerate(zip(bars, category_revenue.values)):
-                    ax.text(value, bar.get_y() + bar.get_height()/2, 
-                           f'${value:,.0f}', 
-                           va='center', ha='left', fontweight='bold')
+                # Ensure date is datetime
+                df['date'] = pd.to_datetime(df['date'])
                 
-                plt.tight_layout()
-                st.pyplot(fig)
-            except ImportError:
-                # Fallback to st.bar_chart if matplotlib not available
-                st.bar_chart(category_revenue)
-        else:
-            st.info("Category column not found in dataset.")
-
-        # ---------- TIME SERIES CHART: Total Revenue vs Total Spend ----------
-        if "date" in df.columns:
-            st.subheader("📈 Total Revenue vs Total Ad Spend Over Time")
-            
-            # Ensure date is datetime
-            df['date'] = pd.to_datetime(df['date'])
-            
-            # Calculate total spend per date
-            df_time = df.copy()
-            df_time['total_spend'] = df_time[['fb_spend', 'instagram_spend', 'tiktok_spend']].sum(axis=1)
-            
-            # Sort by date
-            df_time = df_time.sort_values('date')
-            
-            # Create time series chart
-            try:
-                import matplotlib.pyplot as plt
+                # Calculate total spend per date
+                df_time = df.copy()
+                df_time['total_spend'] = df_time[['fb_spend', 'instagram_spend', 'tiktok_spend']].sum(axis=1)
+                df_time = df_time.sort_values('date')
                 
-                fig, ax = plt.subplots(figsize=(12, 6))
+                # Create subplot
+                fig = make_subplots(specs=[[{"secondary_y": True}]])
                 
-                # Plot both lines
-                ax.plot(df_time['date'], df_time['total_revenue'], 
-                       label='Total Revenue', color='green', linewidth=2, marker='o', markersize=4)
-                ax.plot(df_time['date'], df_time['total_spend'], 
-                       label='Total Ad Spend', color='red', linewidth=2, marker='s', markersize=4)
+                fig.add_trace(go.Scatter(x=df_time['date'], y=df_time['total_revenue'],
+                                        name='Revenue', line=dict(color='#00cc96', width=3)),
+                             secondary_y=False)
+                fig.add_trace(go.Scatter(x=df_time['date'], y=df_time['total_spend'],
+                                        name='Ad Spend', line=dict(color='#ef553b', width=3, dash='dash')),
+                             secondary_y=True)
                 
-                ax.set_xlabel('Date')
-                ax.set_ylabel('Amount ($)')
-                ax.set_title('Total Revenue vs Total Ad Spend Over Time')
-                ax.legend()
-                ax.grid(True, alpha=0.3)
+                fig.update_layout(title="Revenue vs Ad Spend Trend",
+                                 xaxis_title="Date",
+                                 height=450,
+                                 hovermode='x unified')
+                fig.update_yaxes(title_text="Revenue ($)", secondary_y=False)
+                fig.update_yaxes(title_text="Ad Spend ($)", secondary_y=True)
                 
-                # Rotate x-axis labels for better readability
-                plt.xticks(rotation=45)
-                plt.tight_layout()
+                st.plotly_chart(fig, use_container_width=True)
                 
-                st.pyplot(fig)
-                
-                # Optional: Add a note about periods where spend exceeded revenue
+                # Highlight periods where spend exceeded revenue
                 df_time['spend_exceeds_revenue'] = df_time['total_spend'] > df_time['total_revenue']
                 if df_time['spend_exceeds_revenue'].any():
                     exceed_dates = df_time[df_time['spend_exceeds_revenue']]['date'].dt.strftime('%Y-%m-%d').tolist()
-                    st.warning(f"⚠️ Ad spend exceeded revenue on: {', '.join(exceed_dates)}")
+                    st.warning(f"⚠️ Ad spend exceeded revenue on {len(exceed_dates)} days")
+            else:
+                st.info("Date column not found for time series analysis.")
+        
+        with tab3:
+            st.markdown("### Channel Performance Heatmap")
+            if "category" in df.columns:
+                # Date range selector for heatmap
+                if "date" in df.columns:
+                    min_date = df["date"].min().date()
+                    max_date = df["date"].max().date()
+                    
+                    col_date1, col_date2 = st.columns(2)
+                    with col_date1:
+                        start_date = st.date_input("Start Date", value=min_date, min_value=min_date, max_value=max_date, key="heatmap_start")
+                    with col_date2:
+                        end_date = st.date_input("End Date", value=max_date, min_value=min_date, max_value=max_date, key="heatmap_end")
+                    
+                    filtered_df = df[(df["date"] >= pd.to_datetime(start_date)) & (df["date"] <= pd.to_datetime(end_date))]
                 else:
-                    st.success("✅ Ad spend never exceeded revenue during this period!")
+                    filtered_df = df.copy()
+                
+                heatmap_data = filtered_df.groupby("category")[["fb_spend","instagram_spend","tiktok_spend"]].sum()
+                
+                if not heatmap_data.empty:
+                    fig = px.imshow(heatmap_data.T, 
+                                   text_auto='.0f',
+                                   aspect="auto",
+                                   color_continuous_scale='YlOrRd',
+                                   title="Ad Spend Heatmap")
+                    fig.update_layout(height=400)
+                    st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.info(f"No data available for selected date range")
+            else:
+                st.info("Category column not found for heatmap.")
+        
+        with tab4:
+            st.markdown("### Channel Contribution Analysis")
+            
+            # Extract coefficients from Lasso model
+            if hasattr(model, 'coef_'):
+                coef_df = pd.DataFrame({
+                    'Feature': feature_cols,
+                    'Coefficient': model.coef_
+                })
+                channel_features = coef_df[coef_df['Feature'].str.contains('adstock|spend', case=False)]
+                
+                if not channel_features.empty:
+                    alias_mapping = {
+                        'fb_spend': 'Facebook Spend',
+                        'instagram_spend': 'Instagram Spend',
+                        'tiktok_spend': 'TikTok Spend',
+                        'fb_adstock': 'Facebook AdStock',
+                        'insta_adstock': 'Instagram AdStock',
+                        'tiktok_adstock': 'TikTok AdStock'
+                    }
                     
-            except ImportError:
-                # Fallback to st.area_chart for simple visualization
-                chart_data = df_time[['date', 'total_revenue', 'total_spend']].set_index('date')
-                st.line_chart(chart_data)
-        else:
-            st.info("Date column not found for time series analysis.")
+                    channel_features['Feature'] = channel_features['Feature'].replace(alias_mapping)
+                    channel_features = channel_features.sort_values('Coefficient', ascending=True)
+                    
+                    # Create horizontal bar chart for coefficients
+                    fig = px.bar(channel_features, x='Coefficient', y='Feature',
+                                orientation='h', color='Coefficient',
+                                color_continuous_scale='RdYlGn',
+                                title="Channel Impact on Revenue")
+                    fig.update_layout(height=300, margin=dict(l=0, r=0, t=40, b=0))
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Display table
+                    st.dataframe(
+                        channel_features.style.background_gradient(subset=['Coefficient'], cmap='RdYlGn', vmin=-1, vmax=1),
+                        use_container_width=True
+                    )
+                    
+                    st.caption("💡 **What is Adstock?** Adstock measures the *carryover effect* of advertising - how past ad spend continues to influence revenue in future days. Higher Adstock means ads have longer-lasting impact.")
+                else:
+                    st.info("No channel-specific coefficients found")
+            else:
+                st.info("Model coefficients not available")
 
-        # ---------- HEATMAP: Ad Spend by Category and Channel ----------
-        st.subheader("Heatmap – Ad Spend by Campaign Category & Channel")
-        if "category" in df.columns:
-            # Date range selector for heatmap
-            if "date" in df.columns:
-                # Convert date to datetime
-                df["date"] = pd.to_datetime(df["date"])
-                min_date = df["date"].min().date()
-                max_date = df["date"].max().date()
-                
-                # Create date range selector
-                col_date1, col_date2 = st.columns(2)
-                with col_date1:
-                    start_date = st.date_input("Start Date", value=min_date, min_value=min_date, max_value=max_date, key="heatmap_start")
-                with col_date2:
-                    end_date = st.date_input("End Date", value=max_date, min_value=min_date, max_value=max_date, key="heatmap_end")
-                
-                # Filter data based on date range
-                filtered_df = df[(df["date"] >= pd.to_datetime(start_date)) & (df["date"] <= pd.to_datetime(end_date))]
-                
-                # Show selected date range info
-                st.caption(f"📅 Showing data from {start_date} to {end_date}")
-            else:
-                filtered_df = df.copy()
-                st.caption("📅 No date column found - showing all data")
-        
-            # Pivot table for heatmap (showing ad spend, not revenue)
-            heatmap_data = filtered_df.groupby("category")[["fb_spend","instagram_spend","tiktok_spend"]].sum()
-            
-            if not heatmap_data.empty:
-                # Show only heatmap, no extra table
-                try:
-                    import seaborn as sns
-                    import matplotlib.pyplot as plt
-                    
-                    fig, ax = plt.subplots(figsize=(8,4))
-                    sns.heatmap(heatmap_data, annot=True, fmt=".0f", cmap="YlGnBu", ax=ax)
-                    plt.title(f"Ad Spend Heatmap by Category & Channel")
-                    st.pyplot(fig)
-                except ImportError:
-                    st.info("Install seaborn and matplotlib for heatmap visualization: pip install seaborn matplotlib")
-            else:
-                st.info(f"No data available for selected date range: {start_date} to {end_date}")
-        else:
-            st.info("Category column not found for heatmap.")
-            
-        # ---------- CHANNEL CONTRIBUTION (Feature Importance) ----------
-        st.subheader("📊 Channel Contribution Analysis")
-        
-        # Extract coefficients from Lasso model
-        if hasattr(model, 'coef_'):
-            # Get feature names and coefficients
-            coef_df = pd.DataFrame({
-                'Feature': feature_cols,
-                'Coefficient': model.coef_
-            })
-            # Filter for adstock and spend features only
-            channel_features = coef_df[coef_df['Feature'].str.contains('adstock|spend', case=False)]
-            
-            if not channel_features.empty:
-                # Create alias mapping
-                alias_mapping = {
-                    'fb_spend': 'Facebook Spend',
-                    'instagram_spend': 'Instagram Spend',
-                    'tiktok_spend': 'TikTok Spend',
-                    'fb_adstock': 'Facebook AdStock',
-                    'insta_adstock': 'Instagram AdStock',
-                    'tiktok_adstock': 'TikTok AdStock'
-                }
-                
-                # Apply aliases
-                channel_features['Feature'] = channel_features['Feature'].replace(alias_mapping)
-                
-                # Sort by coefficient
-                channel_features = channel_features.sort_values('Coefficient', ascending=False)
-                
-                # Display table with color gradient on Coefficient column
-                st.dataframe(
-                    channel_features.style.background_gradient(subset=['Coefficient'], cmap='RdYlGn', vmin=-1, vmax=1),
-                    use_container_width=True
-                )
-                
-                # Simple Adstock definition
-                st.caption("💡 **What is Adstock?** Adstock measures the *carryover effect* of advertising - how past ad spend continues to influence revenue in future days. Higher Adstock means ads have longer-lasting impact.")
-            else:
-                st.info("No channel-specific coefficients found")
-        else:
-            st.info("Model coefficients not available")
+# ========== FOOTER ==========
+st.markdown("---")
+st.markdown("""
+<div style='text-align: center; color: #666; padding: 20px;'>
+    <p>🚀 Adventa - AI-Powered Campaign Spend Optimizer</p>
+    <p style='font-size: 12px;'>Powered by Lasso Regression & Adstock Transformation</p>
+</div>
+""", unsafe_allow_html=True)
