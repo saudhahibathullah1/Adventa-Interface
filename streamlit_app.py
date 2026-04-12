@@ -393,7 +393,7 @@ if uploaded_file is not None:
                     mime="text/csv"
                 )
 
-    # ---------- PREDICT SECTION ----------
+# ---------- PREDICT SECTION ----------
     with st.expander("🎯 Predict Campaign Performance", expanded=False):
         if "cleaned_df" not in st.session_state:
             st.warning("⚠️ Please process your data and train the model first.")
@@ -404,9 +404,11 @@ if uploaded_file is not None:
             
             col_acc1, col_acc2, col_acc3, col_acc4 = st.columns(4)
             with col_acc1:
-                st.metric("🎯 R² Score", f"{st.session_state.get('r2_score', 0):.3f}")
+                st.metric("🎯 R² Score", f"{st.session_state.get('r2_score', 0):.3f}", 
+                         help="R² measures how well the model explains revenue variation. 1.0 = perfect prediction")
             with col_acc2:
-                st.metric("📉 MAE", f"${st.session_state.get('mae', 0):,.0f}")
+                st.metric("📉 MAE", f"${st.session_state.get('mae', 0):,.0f}",
+                         help="Mean Absolute Error - average prediction error in dollars")
             with col_acc3:
                 y_actual_full = st.session_state.get("y_actual_full")
                 y_predicted_full = st.session_state.get("y_predicted_full")
@@ -592,7 +594,7 @@ if uploaded_file is not None:
                     st.markdown("- Lasso Regression automatically selects important features")
                     st.markdown("- Adstock captures delayed/recurring effects of ad spend")
                     st.markdown("- Category dummies account for campaign type differences")
-
+                    
     # ---------- ANALYZE SECTION ----------
     with st.expander("📊 Campaign Analytics Dashboard", expanded=False):
         if "cleaned_df" not in st.session_state or "trained_model" not in st.session_state:
