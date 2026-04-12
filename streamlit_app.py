@@ -378,9 +378,10 @@ if uploaded_file is not None:
                 if 'category' in cleaned_df.columns:
                     st.subheader("Category Distribution")
                     category_counts = cleaned_df['category'].value_counts()
+                    # Changed to darker color scale
                     fig = px.bar(x=category_counts.values, y=category_counts.index, 
                                  orientation='h', color=category_counts.values,
-                                 color_continuous_scale='Blues')
+                                 color_continuous_scale='Viridis')
                     fig.update_layout(height=300, margin=dict(l=0, r=0, t=0, b=0))
                     st.plotly_chart(fig, use_container_width=True)
                 
@@ -457,7 +458,6 @@ if uploaded_file is not None:
                 })
                 pred_df = pred_df.sort_values('date')
                 
-                # Use date_input instead of slider
                 max_date = pred_df['date'].max()
                 min_date = pred_df['date'].min()
                 
@@ -541,10 +541,11 @@ if uploaded_file is not None:
                 st.markdown("---")
                 st.markdown("### 📈 Prediction Results")
                 
+                # Fixed ROI gauge with better title display
                 fig_gauge = go.Figure(go.Indicator(
                     mode="gauge+number+delta",
                     value=roi,
-                    title={'text': "Return on Investment (ROI)"},
+                    title={'text': "ROI (%)", 'font': {'size': 24}},
                     delta={'reference': 0, 'increasing': {'color': "green"}, 'decreasing': {'color': "red"}},
                     gauge={
                         'axis': {'range': [None, 200]},
@@ -634,15 +635,17 @@ if uploaded_file is not None:
                     st.markdown("### Total Revenue by Campaign Category")
                     category_revenue = df.groupby("category")["total_revenue"].sum().sort_values(ascending=True)
                     
+                    # Changed to darker color scale - Viridis for better visibility
                     fig = px.bar(x=category_revenue.values, y=category_revenue.index, 
                                 orientation='h', color=category_revenue.values,
-                                color_continuous_scale='Blues',
+                                color_continuous_scale='Viridis',
                                 text=category_revenue.values)
                     fig.update_traces(texttemplate='$%{text:,.0f}', textposition='outside')
                     fig.update_layout(height=400, margin=dict(l=0, r=0, t=0, b=0),
                                      xaxis_title="Total Revenue ($)",
                                      yaxis_title="Campaign Category",
-                                     plot_bgcolor='white')
+                                     plot_bgcolor='white',
+                                     font=dict(color='black', size=12))
                     st.plotly_chart(fig, use_container_width=True)
                 else:
                     st.info("Category column not found in dataset.")
@@ -674,9 +677,15 @@ if uploaded_file is not None:
                     
                     st.plotly_chart(fig, use_container_width=True)
                     
+                    # Show actual dates where spend exceeded revenue
                     df_time['spend_exceeds_revenue'] = df_time['total_spend'] > df_time['total_revenue']
                     if df_time['spend_exceeds_revenue'].any():
-                        st.warning(f"⚠️ Ad spend exceeded revenue on {df_time['spend_exceeds_revenue'].sum()} days")
+                        exceed_df = df_time[df_time['spend_exceeds_revenue']]
+                        exceed_dates_list = exceed_df['date'].dt.strftime('%Y-%m-%d').tolist()
+                        exceed_dates_str = ', '.join(exceed_dates_list)
+                        st.warning(f"⚠️ Ad spend exceeded revenue on: {exceed_dates_str}")
+                    else:
+                        st.success("✅ Ad spend never exceeded revenue during this period!")
                 else:
                     st.info("Date column not found for time series analysis.")
             
@@ -700,9 +709,21 @@ if uploaded_file is not None:
                     heatmap_data = filtered_df.groupby("category")[["fb_spend","instagram_spend","tiktok_spend"]].sum()
                     
                     if not heatmap_data.empty:
-                        fig = px.imshow(heatmap_data.T, text_auto='.0f', aspect="auto",
-                                       color_continuous_scale='Blues', title="Ad Spend Heatmap")
-                        fig.update_layout(height=400)
+                        # Rename columns for better display
+                        heatmap_data_display = heatmap_data.rename(columns={
+                            'fb_spend': 'Facebook Spend',
+                            'instagram_spend': 'Instagram Spend',
+                            'tiktok_spend': 'TikTok Spend'
+                        })
+                        fig = px.imshow(heatmap_data_display.T, 
+                                       text_auto='.0f',
+                                       aspect="auto",
+                                       color_continuous_scale='Blues',
+                                       title="Ad Spend Heatmap")
+                        fig.update_layout(height=400,
+                                         xaxis_title="Category",
+                                         yaxis_title="Channel",
+                                         font=dict(color='black', size=12))
                         st.plotly_chart(fig, use_container_width=True)
                     else:
                         st.info("No data available for selected date range")
@@ -727,18 +748,22 @@ if uploaded_file is not None:
                         channel_features['Feature'] = channel_features['Feature'].replace(alias_mapping)
                         channel_features = channel_features.sort_values('Coefficient', ascending=True)
                         
+                        # Updated color scheme to match theme
                         fig = px.bar(channel_features, x='Coefficient', y='Feature',
                                     orientation='h', color='Coefficient',
-                                    color_continuous_scale='RdYlGn',
+                                    color_continuous_scale='Blues',
                                     title="Channel Impact on Revenue")
-                        fig.update_layout(height=300, margin=dict(l=0, r=0, t=40, b=0))
+                        fig.update_layout(height=300, margin=dict(l=0, r=0, t=40, b=0),
+                                         font=dict(color='black', size=12),
+                                         xaxis_title="Coefficient Value",
+                                         yaxis_title="Channel")
                         st.plotly_chart(fig, use_container_width=True)
                         
                         st.dataframe(
-                            channel_features.style.background_gradient(subset=['Coefficient'], cmap='RdYlGn', vmin=-1, vmax=1),
+                            channel_features.style.background_gradient(subset=['Coefficient'], cmap='Blues', vmin=-1, vmax=1),
                             use_container_width=True
                         )
-                        st.caption("💡 **What is Adstock?** Adstock measures the *carryover effect* of advertising - how past ad spend continues to influence revenue in future days.")
+                        st.caption("💡 **What is Adstock?** Adstock measures the *carryover effect* of advertising - how past ad spend continues to influence revenue in future days. Higher Adstock means ads have longer-lasting impact.")
                     else:
                         st.info("No channel-specific coefficients found")
                 else:
