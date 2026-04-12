@@ -378,10 +378,10 @@ if uploaded_file is not None:
                 if 'category' in cleaned_df.columns:
                     st.subheader("Category Distribution")
                     category_counts = cleaned_df['category'].value_counts()
-                    # Changed to darker color scale
+                    # Changed to Blues color scale to match theme
                     fig = px.bar(x=category_counts.values, y=category_counts.index, 
                                  orientation='h', color=category_counts.values,
-                                 color_continuous_scale='Viridis')
+                                 color_continuous_scale='Blues')
                     fig.update_layout(height=300, margin=dict(l=0, r=0, t=0, b=0))
                     st.plotly_chart(fig, use_container_width=True)
                 
@@ -473,15 +473,14 @@ if uploaded_file is not None:
                 
                 filtered_df = pred_df[(pred_df['date'] >= pd.to_datetime(start_date)) & (pred_df['date'] <= pd.to_datetime(end_date))]
                 
+                # Removed markers/dots from the chart
                 fig = go.Figure()
                 fig.add_trace(go.Scatter(x=filtered_df['date'], y=filtered_df['Actual Revenue'],
-                                        mode='lines+markers', name='Actual Revenue',
-                                        line=dict(color='#3b82f6', width=2),
-                                        marker=dict(size=6, color='#3b82f6')))
+                                        mode='lines', name='Actual Revenue',
+                                        line=dict(color='#3b82f6', width=2)))
                 fig.add_trace(go.Scatter(x=filtered_df['date'], y=filtered_df['Predicted Revenue'],
-                                        mode='lines+markers', name='Predicted Revenue',
-                                        line=dict(color='#8b5cf6', width=2, dash='dash'),
-                                        marker=dict(size=6, symbol='square', color='#8b5cf6')))
+                                        mode='lines', name='Predicted Revenue',
+                                        line=dict(color='#8b5cf6', width=2, dash='dash')))
                 
                 fig.update_layout(
                     title="Model Predictions vs Actual Performance",
@@ -541,7 +540,6 @@ if uploaded_file is not None:
                 st.markdown("---")
                 st.markdown("### 📈 Prediction Results")
                 
-                # Fixed ROI gauge with better title display
                 fig_gauge = go.Figure(go.Indicator(
                     mode="gauge+number+delta",
                     value=roi,
@@ -635,10 +633,10 @@ if uploaded_file is not None:
                     st.markdown("### Total Revenue by Campaign Category")
                     category_revenue = df.groupby("category")["total_revenue"].sum().sort_values(ascending=True)
                     
-                    # Changed to darker color scale - Viridis for better visibility
+                    # Changed to Blues color scale to match theme
                     fig = px.bar(x=category_revenue.values, y=category_revenue.index, 
                                 orientation='h', color=category_revenue.values,
-                                color_continuous_scale='Viridis',
+                                color_continuous_scale='Blues',
                                 text=category_revenue.values)
                     fig.update_traces(texttemplate='$%{text:,.0f}', textposition='outside')
                     fig.update_layout(height=400, margin=dict(l=0, r=0, t=0, b=0),
@@ -677,7 +675,6 @@ if uploaded_file is not None:
                     
                     st.plotly_chart(fig, use_container_width=True)
                     
-                    # Show actual dates where spend exceeded revenue
                     df_time['spend_exceeds_revenue'] = df_time['total_spend'] > df_time['total_revenue']
                     if df_time['spend_exceeds_revenue'].any():
                         exceed_df = df_time[df_time['spend_exceeds_revenue']]
@@ -709,7 +706,6 @@ if uploaded_file is not None:
                     heatmap_data = filtered_df.groupby("category")[["fb_spend","instagram_spend","tiktok_spend"]].sum()
                     
                     if not heatmap_data.empty:
-                        # Rename columns for better display
                         heatmap_data_display = heatmap_data.rename(columns={
                             'fb_spend': 'Facebook Spend',
                             'instagram_spend': 'Instagram Spend',
@@ -748,7 +744,6 @@ if uploaded_file is not None:
                         channel_features['Feature'] = channel_features['Feature'].replace(alias_mapping)
                         channel_features = channel_features.sort_values('Coefficient', ascending=True)
                         
-                        # Updated color scheme to match theme
                         fig = px.bar(channel_features, x='Coefficient', y='Feature',
                                     orientation='h', color='Coefficient',
                                     color_continuous_scale='Blues',
