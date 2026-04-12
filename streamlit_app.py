@@ -453,6 +453,177 @@ with st.expander("📊 Analyze", expanded=False):
         with col3:
             st.metric("📈 Total Campaigns", total_campaigns)
 
+        # ---------- REVENUE BY CATEGORY (Horizontal Bar Chart) ----------
+        if "category" in df.columns:
+            st.subheader("📊 Total Revenue by Campaign Category")
+            category_revenue = df.groupby("category")["total_revenue"].sum().sort_values(ascending=True)
+            
+            # Create horizontal bar chart using matplotlib
+            try:
+                import matplotlib.pyplot as plt
+                
+                fig, ax = plt.subplots(figsize=(10, 6))
+                bars = ax.barh(category_revenue.index, category_revenue.values, color='skyblue')
+                ax.set_xlabel('Total Revenue ($)')
+                ax.set_ylabel('Campaign Category')
+                ax.set_title('Total Revenue by Campaign Category')
+                
+                # Add value labels on bars
+                for i, (bar, value) in enumerate(zip(bars, category_revenue.values)):
+                    ax.text(value, bar.get_y() + bar.get_height()/2, 
+                           f'${value:,.0f}', 
+                           va='center', ha='left', fontweight='bold')
+                
+                plt.tight_layout()
+                st.pyplot(fig)
+            except ImportError:
+                # Fallback to st.bar_chart if matplotlib not available
+                st.bar_chart(category_revenue)
+        else:
+            st.info("Category column not found in dataset.")
+
+        # ---------- TIME SERIES CHART: Total Revenue vs Total Spend ----------
+        if "date" in df.columns:
+            st.subheader("📈 Total Revenue vs Total Ad Spend Over Time")
+            
+            # Ensure date is datetime
+            df['date'] = pd.to_datetime(df['date'])
+            
+            # Calculate total spend per date
+            df_time = df.copy()
+            df_time['total_spend'] = df_time[['fb_spend', 'instagram_spend', 'tiktok_spend']].sum(axis=1)
+            
+            # Sort by date
+            df_time = df_time.sort_values('date')
+            
+            # Create time series chart
+            try:
+                import matplotlib.pyplot as plt
+                
+                fig, ax = plt.subplots(figsize=(12, 6))
+                
+                # Plot both lines
+                ax.plot(df_time['date'], df_time['total_revenue'], 
+                       label='Total Revenue', color='green', linewidth=2, marker='o', markersize=4)
+                ax.plot(df_time['date'], df_time['total_spend'], 
+                       label='Total Ad Spend', color='red', linewidth=2, marker='s', markersize=4)
+                
+                ax.set_xlabel('Date')
+                ax.set_ylabel('Amount ($)')
+                ax.set_title('Total Revenue vs Total Ad Spend Over Time')
+                ax.legend()
+                ax.grid(True, alpha=0.3)
+                
+                # Rotate x-axis labels for better readability
+                plt.xticks(rotation=45)
+                plt.tight_layout()
+                
+                st.pyplot(fig)
+                
+                # Optional: Add a note about periods where spend exceeded revenue
+                df_time['spend_exceeds_revenue'] = df_time['total_spend'] > df_time['total_revenue']
+                if df_time['spend_exceeds_revenue'].any():
+                    exceed_dates = df_time[df_time['spend_exceeds_revenue']]['date'].dt.strftime('%Y-%m-%d').tolist()
+                    st.warning(f"⚠️ Ad spend exceeded revenue on: {', '.join(exceed_dates)}")
+                else:
+                    st.success("✅ Ad spend never exceeded revenue during this period!")
+                    
+            except ImportError:
+                # Fallback to st.area_chart for simple visualization
+                chart_data = df_time[['date', 'total_revenue', 'total_spend']].set_index('date')
+                st.line_chart(chart_data)
+        else:
+            st.info("Date column not found for time series analysis.")
+
+        # ---------- HEATMAP: Ad Spend by Category and Channel ----------
+        st.subheader("Heatmap – Ad Spend by Campaign Category & Channel")
+        if "category" in df.columns:
+            # Date range selector for heatmap
+            if "date" in df.columns:
+                # Convert date to datetime
+                df["date"] = pd.to_datetime(df["date"])
+                min_date = df["date"].min().date()
+                max_date = df["date"].max().date()
+                
+                # Create date range selector
+                col_date1, col_date2 = st.columns(2)
+                with col_date1:
+                    start_date = st.date_input("Start Date", value=min_date, min_value=min_date, max_value=max_date, key="heatmap_start")
+                with col_date2:
+                    end_date = st.date_input("End Date", value=max_date, min_value=min_date, max_value=max_date, key="heatmap_end")
+                
+                # Filter data based on date range
+                filtered_df = df[(df["date"] >= pd.to_datetime(start_date)) & (df["date"] <= pd.to_datetime(end_date))]
+                
+                # Show selected date range info
+                st.caption(f"📅 Showing data from {start_date} to {end_date}")
+            else:
+                filtered_df = df.copy()
+                st.caption("📅 No date column found - showing all data")
+        
+            # Pivot table for heatmap (showing ad spend, not revenue)
+            heatmap_data = filtered_df.groupby("category")[["fb_spend","instagram_spend","tiktok_spend"]].sum()
+            
+            if not heatmap_data.empty:
+                # Show only heatmap, no extra table
+                try:
+                    import seaborn as sns
+                    import matplotlib.pyplot as plt
+                    
+                    fig, ax = plt.subplots(figsize=(8,4))
+                    sns.heatmap(heatmap_data, annot=True, fmt=".0f", cmap="YlGnBu", ax=ax)
+                    plt.title(f"Ad Spend Heatmap by Category & Channel")
+                    st.pyplot(fig)
+                except ImportError:
+                    st.info("Install seaborn and matplotlib for heatmap visualization: pip install seaborn matplotlib")
+            else:
+                st.info(f"No data available for selected date range: {start_date} to {end_date}")
+        else:
+            st.info("Category column not found for heatmap.")
+            
+        # ---------- CHANNEL CONTRIBUTION (Feature Importance) ----------
+        st.subheader("📊 Channel Contribution Analysis")
+        
+        # Extract coefficients from Lasso model
+        if hasattr(model, 'coef_'):
+            # Get feature names and coefficients
+            coef_df = pd.DataFrame({
+                'Feature': feature_cols,
+                'Coefficient': model.coef_
+            })
+            # Filter for adstock and spend features only
+            channel_features = coef_df[coef_df['Feature'].str.contains('adstock|spend', case=False)]
+            
+            if not channel_features.empty:
+                # Create alias mapping
+                alias_mapping = {
+                    'fb_spend': 'Facebook Spend',
+                    'instagram_spend': 'Instagram Spend',
+                    'tiktok_spend': 'TikTok Spend',
+                    'fb_adstock': 'Facebook AdStock',
+                    'insta_adstock': 'Instagram AdStock',
+                    'tiktok_adstock': 'TikTok AdStock'
+                }
+                
+                # Apply aliases
+                channel_features['Feature'] = channel_features['Feature'].replace(alias_mapping)
+                
+                # Sort by coefficient
+                channel_features = channel_features.sort_values('Coefficient', ascending=False)
+                
+                # Display table with color gradient on Coefficient column
+                st.dataframe(
+                    channel_features.style.background_gradient(subset=['Coefficient'], cmap='RdYlGn', vmin=-1, vmax=1),
+                    use_container_width=True
+                )
+                
+                # Simple Adstock definition
+                st.caption("💡 **What is Adstock?** Adstock measures the *carryover effect* of advertising - how past ad spend continues to influence revenue in future days. Higher Adstock means ads have longer-lasting impact.")
+            else:
+                st.info("No channel-specific coefficients found")
+        else:
+            st.info("Model coefficients not available")
+
         # ---------- REVENUE BY CATEGORY (Vertical Bar Chart) ----------
         if "category" in df.columns:
             st.subheader("📊 Total Revenue by Campaign Category")
