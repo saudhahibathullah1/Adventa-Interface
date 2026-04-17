@@ -592,6 +592,88 @@ if uploaded_file is not None:
                     if has_category:
                         st.markdown(f"**Selected Category:** {category_value}")
                     
+                    # --- NEW SECTION: Investment Allocation Recommendation ---
+                    st.markdown("---")
+                    st.markdown("### 📊 Optimal Investment Allocation")
+                    
+                    # Extract coefficients from the trained model
+                    model_coef = st.session_state["trained_model"].coef_
+                    feature_names = st.session_state["feature_cols"]
+                    
+                    # Create a mapping for channel-specific coefficients
+                    channel_coefs = {}
+                    for name, coef in zip(feature_names, model_coef):
+                        if 'fb_spend' in name or 'fb_adstock' in name:
+                            channel_coefs['Facebook'] = channel_coefs.get('Facebook', 0) + abs(coef)
+                        elif 'instagram_spend' in name or 'insta_adstock' in name:
+                            channel_coefs['Instagram'] = channel_coefs.get('Instagram', 0) + abs(coef)
+                        elif 'tiktok_spend' in name or 'tiktok_adstock' in name:
+                            channel_coefs['TikTok'] = channel_coefs.get('TikTok', 0) + abs(coef)
+                    
+                    # Calculate percentages based on coefficient magnitudes
+                    if channel_coefs:
+                        total_impact = sum(channel_coefs.values())
+                        if total_impact > 0:
+                            fb_pct = (channel_coefs.get('Facebook', 0) / total_impact) * 100
+                            insta_pct = (channel_coefs.get('Instagram', 0) / total_impact) * 100
+                            tiktok_pct = (channel_coefs.get('TikTok', 0) / total_impact) * 100
+                            
+                            # Display the recommended allocation
+                            col_rec1, col_rec2, col_rec3 = st.columns(3)
+                            with col_rec1:
+                                st.metric("🎯 Facebook", f"{fb_pct:.1f}%", help="Recommended % of total budget based on model coefficients")
+                            with col_rec2:
+                                st.metric("🎯 Instagram", f"{insta_pct:.1f}%", help="Recommended % of total budget based on model coefficients")
+                            with col_rec3:
+                                st.metric("🎯 TikTok", f"{tiktok_pct:.1f}%", help="Recommended % of total budget based on model coefficients")
+                            
+                            # Show actual dollar amounts based on user's total spend
+                            st.caption(f"Based on your total spend of **${total_ad_spend:,.2f}**, the optimal allocation would be:")
+                            col_dol1, col_dol2, col_dol3 = st.columns(3)
+                            with col_dol1:
+                                st.info(f"💰 **Facebook:** ${(fb_pct/100) * total_ad_spend:,.2f}")
+                            with col_dol2:
+                                st.info(f"💰 **Instagram:** ${(insta_pct/100) * total_ad_spend:,.2f}")
+                            with col_dol3:
+                                st.info(f"💰 **TikTok:** ${(tiktok_pct/100) * total_ad_spend:,.2f}")
+                            
+                            # Add a comparison with current allocation
+                            st.markdown("**Comparison with Your Current Allocation:**")
+                            current_allocation = {
+                                'Facebook': fb_spend,
+                                'Instagram': instagram_spend,
+                                'TikTok': tiktok_spend
+                            }
+                            
+                            # Calculate Euclidean distance between current and optimal
+                            optimal_allocation = {
+                                'Facebook': (fb_pct/100) * total_ad_spend,
+                                'Instagram': (insta_pct/100) * total_ad_spend,
+                                'TikTok': (tiktok_pct/100) * total_ad_spend
+                            }
+                            
+                            distance = np.sqrt(sum((current_allocation[ch] - optimal_allocation[ch])**2 for ch in current_allocation))
+                            
+                            if distance < 100:
+                                st.success("✅ Your current allocation is very close to the optimal recommendation!")
+                            elif distance < 500:
+                                st.info("📊 Your current allocation is moderately aligned with optimal recommendations.")
+                            else:
+                                st.warning("⚠️ Consider reallocating your budget closer to the recommended percentages for better ROI.")
+                            
+                            # Optional: Show coefficient values for transparency
+                            with st.expander("📐 View Model Coefficient Details"):
+                                coef_df = pd.DataFrame({
+                                    'Channel': list(channel_coefs.keys()),
+                                    'Absolute Coefficient Sum': list(channel_coefs.values())
+                                }).sort_values('Absolute Coefficient Sum', ascending=False)
+                                st.dataframe(coef_df, use_container_width=True)
+                                st.caption("Higher coefficient values indicate stronger impact on revenue prediction.")
+                        else:
+                            st.info("Model coefficients are zero or near-zero. Consider adding more data or features.")
+                    else:
+                        st.info("Channel-specific coefficients not found in model features.")
+                    
                     st.markdown("**Model Interpretation:**")
                     st.markdown("- Lasso Regression automatically selects important features")
                     st.markdown("- Adstock captures delayed/recurring effects of ad spend")
