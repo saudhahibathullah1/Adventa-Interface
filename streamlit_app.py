@@ -463,7 +463,7 @@ with st.sidebar:
     st.markdown("""
     <div style="display: flex; flex-direction: column; gap: 8px;">
         <a href="#" style="text-decoration: none;">
-            <button style="width: 100%; padding: 10px; background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600;">
+            <button style="width: 100%; padding: 10px; background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600;">
                 🏠 Home
             </button>
         </a>
