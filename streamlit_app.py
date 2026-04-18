@@ -196,7 +196,7 @@ with col1:
     st.markdown("# 🚀")
 with col2:
     st.markdown("# Adventa")
-    st.markdown("### AI-Powered Campaign Spend Optimizer")
+    st.markdown("### Ad Campaign Spend Optimizing Tool")
 
 st.markdown("---")
 
