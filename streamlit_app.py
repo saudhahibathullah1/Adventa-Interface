@@ -965,43 +965,32 @@ with st.expander("📊 Campaign Analytics Dashboard", expanded=False):
                 st.info("Category column not found for heatmap.")
         
         with tab4:
-            st.markdown("### Channel Contribution Analysis")
-            if hasattr(model, 'coef_'):
-                coef_df = pd.DataFrame({'Feature': feature_cols, 'Coefficient': model.coef_})
-                channel_features = coef_df[coef_df['Feature'].str.contains('adstock|spend', case=False)]
-                
-                if not channel_features.empty:
-                    alias_mapping = {
-                        'fb_spend': 'Facebook Spend',
-                        'instagram_spend': 'Instagram Spend',
-                        'tiktok_spend': 'TikTok Spend',
-                        'fb_adstock': 'Facebook AdStock',
-                        'insta_adstock': 'Instagram AdStock',
-                        'tiktok_adstock': 'TikTok AdStock'
-                    }
-                    channel_features['Feature'] = channel_features['Feature'].replace(alias_mapping)
-                    channel_features = channel_features.sort_values('Coefficient', ascending=True)
-                    
-                    fig = px.bar(channel_features, x='Coefficient', y='Feature',
-                                orientation='h', color='Coefficient',
-                                color_continuous_scale='Blues',
-                                title="Channel Impact on Revenue")
-                    fig.update_layout(height=300, margin=dict(l=0, r=0, t=40, b=0),
-                                     font=dict(color='black', size=12),
-                                     xaxis_title="Coefficient Value",
-                                     yaxis_title="Channel")
-                    st.plotly_chart(fig, use_container_width=True)
-                    
-                    st.dataframe(
-                        channel_features.style.background_gradient(subset=['Coefficient'], cmap='Blues', vmin=-1, vmax=1),
-                        use_container_width=True
-                    )
-                    st.caption("💡 **What is Adstock?** Adstock measures the *carryover effect* of advertising - how past ad spend continues to influence revenue in future days. Higher Adstock means ads have longer-lasting impact.")
-                else:
-                    st.info("No channel-specific coefficients found")
-            else:
-                st.info("Model coefficients not available")
-
+    st.markdown("### Channel Contribution Analysis")
+    if hasattr(model, 'coef_'):
+        coef_df = pd.DataFrame({'Feature': feature_cols, 'Coefficient': model.coef_})
+        channel_features = coef_df[coef_df['Feature'].str.contains('adstock|spend', case=False)]
+        
+        if not channel_features.empty:
+            alias_mapping = {
+                'fb_spend': 'Facebook Spend',
+                'instagram_spend': 'Instagram Spend',
+                'tiktok_spend': 'TikTok Spend',
+                'fb_adstock': 'Facebook AdStock',
+                'insta_adstock': 'Instagram AdStock',
+                'tiktok_adstock': 'TikTok AdStock'
+            }
+            channel_features['Feature'] = channel_features['Feature'].replace(alias_mapping)
+            channel_features = channel_features.sort_values('Coefficient', ascending=False)
+            
+            st.dataframe(
+                channel_features.style.background_gradient(subset=['Coefficient'], cmap='Blues', vmin=-1, vmax=1),
+                use_container_width=True
+            )
+            st.caption("💡 **What is Adstock?** Adstock measures the *carryover effect* of advertising - how past ad spend continues to influence revenue in future days. Higher Adstock means ads have longer-lasting impact.")
+        else:
+            st.info("No channel-specific coefficients found")
+    else:
+        st.info("Model coefficients not available")
 # ========== FOOTER ==========
 st.markdown("---")
 st.markdown("""
