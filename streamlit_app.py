@@ -931,4 +931,4 @@ st.markdown("""
     <p>🚀 Adventa - AI-Powered Campaign Spend Optimizer</p>
     <p style='font-size: 12px;'>Powered by Lasso Regression & Adstock Transformation</p>
 </div>
-""", unsafe_allow_html=True) to this code add
+""", unsafe_allow_html=True) 
