@@ -462,6 +462,11 @@ with st.sidebar:
     # Navigation buttons with HTML links for smooth scrolling
     st.markdown("""
     <div style="display: flex; flex-direction: column; gap: 8px;">
+        <a href="#" style="text-decoration: none;">
+            <button style="width: 100%; padding: 10px; background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600;">
+                🏠 Home
+            </button>
+        </a>
         <a href="#data-import" style="text-decoration: none;">
             <button style="width: 100%; padding: 10px; background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600;">
                 📁 Data Import
@@ -482,8 +487,7 @@ with st.sidebar:
     
     st.markdown("---")
     
-    
-    st.caption("v1.0.0 | AI-Powered")
+    st.caption("v1.0.0 | Analyzer")
 
 # ========== DATA IMPORT SECTION ==========
 st.markdown('<div id="data-import"></div>', unsafe_allow_html=True)
