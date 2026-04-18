@@ -457,7 +457,7 @@ st.markdown("""
 st.markdown('<div id="welcome-section"></div>', unsafe_allow_html=True)
 st.markdown("## 🎯 Welcome to ADVENTA")
 st.markdown("""
-### Your AI-Powered Campaign Spend Optimizer
+### Your Advertisement Campaign Spend Optimizer
 
 **Features:**
 - 🤖 **Machine Learning Predictions** using Lasso Regression
@@ -1006,7 +1006,7 @@ with st.expander("📊 Campaign Analytics Dashboard", expanded=False):
 st.markdown("---")
 st.markdown("""
 <div style='text-align: center; padding: 20px; color: #64748b;'>
-    <p>🚀 Adventa - AI-Powered Campaign Spend Optimizer</p>
+    <p>🚀 Adventa - Advertisement Campaign Spend Optimizer</p>
     <p style='font-size: 12px;'>Powered by Lasso Regression & Adstock Transformation</p>
 </div>
 """, unsafe_allow_html=True)
