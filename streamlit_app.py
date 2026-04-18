@@ -467,7 +467,7 @@ st.markdown("""
 
 ### How it works:
 1. Upload your campaign data (CSV format)
-2. Let our AI train on your historical performance
+2. Let our tool train on your historical performance
 3. Get predictions and optimization recommendations
 """)
 
