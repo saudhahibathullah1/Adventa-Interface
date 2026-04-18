@@ -482,11 +482,6 @@ with st.sidebar:
     
     st.markdown("---")
     
-    # Status indicators
-    if "trained_model" in st.session_state:
-        st.success("✅ Model Ready")
-    else:
-        st.info("⏳ No model loaded")
     
     st.caption("v1.0.0 | AI-Powered")
 
