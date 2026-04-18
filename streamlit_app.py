@@ -195,8 +195,8 @@ col1, col2 = st.columns([1, 5])
 with col1:
     st.markdown("# 🚀")
 with col2:
-    st.markdown("# Adventa")
-    st.markdown("### Ad Campaign Spend Optimizing Tool")
+    st.markdown("# ADVENTA")
+    st.markdown("### AD CAMPAIGN SPEND OPTIMIZING TOOL")
 
 st.markdown("---")
 
