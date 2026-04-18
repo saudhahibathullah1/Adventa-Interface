@@ -275,6 +275,131 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
+# ========== WELCOME / LANDING PAGE ==========
+# Initialize session state for page navigation
+if "page" not in st.session_state:
+    st.session_state["page"] = "welcome"
+
+# Welcome Page
+if st.session_state["page"] == "welcome":
+    # Center the welcome content
+    col_left, col_center, col_right = st.columns([1, 2, 1])
+    
+    with col_center:
+        st.markdown("""
+        <style>
+        .welcome-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 3rem 2rem;
+            border-radius: 30px;
+            text-align: center;
+            margin: 2rem 0;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+        }
+        .welcome-title {
+            font-size: 4rem;
+            font-weight: 900;
+            color: white;
+            margin-bottom: 1rem;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+        .welcome-subtitle {
+            font-size: 1.2rem;
+            color: rgba(255,255,255,0.9);
+            margin-bottom: 2rem;
+        }
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+            margin: 2rem 0;
+        }
+        .feature-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 20px;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
+        }
+        .feature-card:hover {
+            transform: translateY(-5px);
+        }
+        .feature-icon {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+        }
+        .feature-title {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: #1e293b;
+            margin-bottom: 0.5rem;
+        }
+        .feature-desc {
+            font-size: 0.9rem;
+            color: #64748b;
+        }
+        .cta-button {
+            background: linear-gradient(135deg, #FF4B4B, #FF9068);
+            color: white;
+            border: none;
+            padding: 12px 32px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 1rem;
+            width: 100%;
+        }
+        .cta-button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 10px 20px rgba(255,75,75,0.3);
+        }
+        </style>
+        
+        <div class="welcome-card">
+            <div class="welcome-title">🚀 Welcome to ADVENTA</div>
+            <div class="welcome-subtitle">
+                Your AI-Powered Campaign Spend Optimizer
+            </div>
+        </div>
+        
+        <div class="feature-grid">
+            <div class="feature-card">
+                <div class="feature-icon">🤖</div>
+                <div class="feature-title">AI-Powered Predictions</div>
+                <div class="feature-desc">Lasso Regression with Adstock transformation for accurate revenue forecasting</div>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">📊</div>
+                <div class="feature-title">Real-Time Analytics</div>
+                <div class="feature-desc">Interactive dashboards and ROI analysis for data-driven decisions</div>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">💰</div>
+                <div class="feature-title">Budget Optimization</div>
+                <div class="feature-desc">Smart allocation recommendations to maximize your campaign ROI</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Get Started Button
+        if st.button("🚀 GET STARTED", key="get_started", use_container_width=True):
+            st.session_state["page"] = "main"
+            st.rerun()
+        
+        st.markdown("""
+        <div style='text-align: center; margin-top: 2rem; padding: 1rem; background: #f8fafc; border-radius: 15px;'>
+            <p style='color: #64748b;'>✨ Upload your campaign data to unlock AI-powered insights ✨</p>
+            <p style='font-size: 12px; color: #94a3b8;'>Supports: Facebook, Instagram, TikTok ad spend data</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Stop execution here so main app doesn't show
+    st.stop()
+
+
 # ========== SIDEBAR NAVIGATION ==========
 # Initialize session state
 if "page" not in st.session_state:
