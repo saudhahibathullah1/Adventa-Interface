@@ -191,14 +191,88 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ========== HEADER ==========
-col1, col2 = st.columns([1, 5])
-with col1:
-    st.markdown("# 🚀")
-with col2:
-    st.markdown("# ADVENTA")
-    st.markdown("<h3 style='margin-top: -15px;'>AD CAMPAIGN SPEND OPTIMIZING TOOL</h3>", unsafe_allow_html=True)
-
-st.markdown("---")
+st.markdown("""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap');
+    
+    .header-container {
+        background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+        padding: 1.2rem 2rem;
+        border-radius: 20px;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        border: 1px solid rgba(255,255,255,0.1);
+    }
+    
+    .header-content {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+    }
+    
+    .rocket-icon {
+        font-size: 3.5rem;
+        filter: drop-shadow(0 0 10px rgba(255,75,75,0.5));
+        animation: float 3s ease-in-out infinite;
+    }
+    
+    @keyframes float {
+        0%, 100% { transform: translateY(0px); }
+        50% { transform: translateY(-5px); }
+    }
+    
+    .title-text {
+        font-family: 'Space Grotesk', sans-serif;
+        background: linear-gradient(135deg, #FF4B4B, #FF9068, #FFD166);
+        background-clip: text;
+        -webkit-background-clip: text;
+        color: transparent;
+        font-size: 2.8rem;
+        font-weight: 700;
+        margin: 0;
+        letter-spacing: -0.5px;
+    }
+    
+    .subtitle-text {
+        font-family: 'Space Grotesk', sans-serif;
+        background: linear-gradient(135deg, #a8c0ff, #3f2b96);
+        background-clip: text;
+        -webkit-background-clip: text;
+        color: transparent;
+        font-size: 1rem;
+        font-weight: 500;
+        margin: 0;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+    }
+    
+    .badge {
+        background: rgba(255,75,75,0.2);
+        backdrop-filter: blur(10px);
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.7rem;
+        font-family: monospace;
+        color: #FF9068;
+        border: 1px solid rgba(255,75,75,0.3);
+        margin-left: 15px;
+    }
+    </style>
+    
+    <div class="header-container">
+        <div class="header-content">
+            <div class="rocket-icon">🚀</div>
+            <div style="flex: 1;">
+                <div style="display: flex; align-items: baseline; gap: 15px;">
+                    <div class="title-text">ADVENTA</div>
+                    <div class="badge">ALPHA</div>
+                </div>
+                <div class="subtitle-text">📊 AD CAMPAIGN SPEND OPTIMIZING TOOL</div>
+            </div>
+        </div>
+    </div>
+    <hr style="height: 2px; background: linear-gradient(90deg, #FF4B4B, #FF9068, #FFD166, transparent); border: none; margin-top: -0.8rem;">
+""", unsafe_allow_html=True)
 
 # ========== DATA IMPORT ==========
 st.markdown("## 📁 Data Import")
