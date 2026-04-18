@@ -274,6 +274,108 @@ st.markdown("""
     <hr style="height: 2px; background: linear-gradient(90deg, #FF4B4B, #FF9068, #FFD166, transparent); border: none; margin-top: -0.8rem;">
 """, unsafe_allow_html=True)
 
+
+# ========== SIDEBAR NAVIGATION ==========
+# Initialize session state
+if "page" not in st.session_state:
+    st.session_state["page"] = "home"
+
+# Custom sidebar navigation
+with st.sidebar:
+    st.markdown("### 🚀 ADVENTA")
+    st.markdown("---")
+    
+    # Navigation buttons
+    if st.button("🏠 Home", use_container_width=True):
+        st.session_state["page"] = "home"
+        st.rerun()
+    
+    if st.button("📊 Dashboard", use_container_width=True):
+        if "cleaned_df" in st.session_state:
+            st.session_state["page"] = "dashboard"
+            st.rerun()
+        else:
+            st.warning("Please upload data first on the Home page")
+    
+    if st.button("🎯 Predict", use_container_width=True):
+        if "trained_model" in st.session_state:
+            st.session_state["page"] = "predict"
+            st.rerun()
+        else:
+            st.warning("Please train the model first on the Home page")
+    
+    if st.button("📈 Analytics", use_container_width=True):
+        if "trained_model" in st.session_state:
+            st.session_state["page"] = "analytics"
+            st.rerun()
+        else:
+            st.warning("Please train the model first on the Home page")
+    
+    st.markdown("---")
+    st.caption("v1.0.0 | AI-Powered")
+
+# Page routing
+if st.session_state["page"] == "home":
+    # Welcome page content (from Option 1)
+    st.markdown("## 🎯 Welcome to ADVENTA")
+    st.markdown("""
+    ### Your AI-Powered Campaign Spend Optimizer
+    
+    **Features:**
+    - 🤖 **Machine Learning Predictions** using Lasso Regression
+    - 📊 **Real-time Analytics** with interactive visualizations
+    - 💰 **Budget Optimization** recommendations
+    - 🔮 **Revenue Forecasting** based on ad spend
+    
+    ### How it works:
+    1. Upload your campaign data (CSV format)
+    2. Let our AI train on your historical performance
+    3. Get predictions and optimization recommendations
+    """)
+    
+    uploaded_file = st.file_uploader(
+        "📁 Upload Campaign Data (CSV)",
+        type=["csv"],
+        help="Required columns: date, category, fb_spend, instagram_spend, tiktok_spend, total_revenue"
+    )
+    
+    if uploaded_file is not None:
+        raw_df = pd.read_csv(uploaded_file)
+        st.session_state["raw_df"] = raw_df
+        st.success("✅ File uploaded successfully! Click 'Process Data' to continue.")
+        
+        if st.button("🚀 Process Data & Train Model", type="primary"):
+            with st.spinner("Training AI model..."):
+                cleaned_df = clean_ad_data(raw_df)
+                st.session_state["cleaned_df"] = cleaned_df
+                model, error, r2, mae = train_prediction_model(cleaned_df)
+                if model:
+                    st.session_state["trained_model"] = model
+                    st.session_state["model_type"] = "lasso"
+                    st.session_state["r2_score"] = r2
+                    st.session_state["mae"] = mae
+                    st.success("✅ Model trained successfully!")
+                    st.balloons()
+                    st.info("👉 Go to Dashboard or Predict tabs to see results")
+                else:
+                    st.error(f"Error: {error}")
+    
+    st.stop()
+
+elif st.session_state["page"] == "dashboard":
+    st.markdown("## 📊 Dashboard Overview")
+    # Add your dashboard content here (can reuse from your existing code)
+    
+elif st.session_state["page"] == "predict":
+    st.markdown("## 🎯 Campaign Predictor")
+    # Add your prediction content here
+    
+elif st.session_state["page"] == "analytics":
+    st.markdown("## 📈 Advanced Analytics")
+    # Add your analytics content here
+
+# Continue with your original code or restructure as needed
+
 # ========== DATA IMPORT ==========
 st.markdown("## 📁 Data Import")
 st.markdown("Upload your campaign data to get started")
