@@ -193,12 +193,13 @@ st.markdown("""
 # ========== HEADER ==========
 col1, col2 = st.columns([1, 5])
 with col1:
-    st.markdown("# 🚀")
+    st.markdown("<h1 style='margin: 0;'>🚀</h1>", unsafe_allow_html=True)
 with col2:
-    st.markdown("# ADVENTA")
-    st.markdown("### AD CAMPAIGN SPEND OPTIMIZING TOOL")
+    st.markdown("<h1 style='margin-bottom: 0; color: #FF4B4B;'>ADVENTA</h1>", unsafe_allow_html=True)
+    st.markdown("<h3 style='margin-top: 0; color: #888;'>📈 AD CAMPAIGN SPEND OPTIMIZING TOOL</h3>", unsafe_allow_html=True)
 
 st.markdown("---")
+st.markdown("<style>hr {margin-top: -0.5rem; margin-bottom: 1rem;}</style>", unsafe_allow_html=True)
 
 # ========== DATA IMPORT ==========
 st.markdown("## 📁 Data Import")
