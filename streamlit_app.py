@@ -18,121 +18,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ========== FUNCTION DEFINITIONS ==========
-def adstock(x, decay=0.5):
-    """Calculate adstock transformation for carryover effect"""
-    result = []
-    for i, val in enumerate(x):
-        if i == 0:
-            result.append(val)
-        else:
-            result.append(val + decay * result[i-1])
-    return result
-
-def clean_ad_data(df):
-    df = df.copy()
-    df.columns = df.columns.str.lower().str.replace(" ", "_")
-    df = df.drop_duplicates()
-    
-    numeric_cols = df.select_dtypes(include="number").columns
-    df[numeric_cols] = df[numeric_cols].fillna(0)
-    
-    categorical_cols = df.select_dtypes(include="object").columns
-    df[categorical_cols] = df[categorical_cols].fillna("unknown")
-    
-    if "date" in df.columns:
-        df["date"] = pd.to_datetime(df["date"], dayfirst=True, errors="coerce")
-    
-    if "total_revenue" in df.columns:
-        if (df["total_revenue"] == 0).all():
-            df = df.drop(columns=["total_revenue"])
-    
-    return df
-
-def train_prediction_model(df):
-    required_cols = ["total_revenue", "fb_spend", "instagram_spend", "tiktok_spend"]
-    missing = [c for c in required_cols if c not in df.columns]
-    
-    if missing:
-        return None, f"Missing columns: {', '.join(missing)}"
-    
-    if len(df) < 5:
-        return None, "Not enough data to train model. Need at least 5 rows of data."
-    
-    try:
-        df_model = df.copy()
-        df_model['fb_adstock'] = adstock(df_model['fb_spend'].values)
-        df_model['insta_adstock'] = adstock(df_model['instagram_spend'].values)
-        df_model['tiktok_adstock'] = adstock(df_model['tiktok_spend'].values)
-        
-        if 'category' in df_model.columns:
-            df_model = pd.get_dummies(df_model, columns=['category'], drop_first=True)
-        
-        feature_cols = [col for col in df_model.columns if col not in ['total_revenue', 'date']]
-        X = df_model[feature_cols]
-        y = df_model['total_revenue']
-        
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
-        
-        model = Lasso(alpha=1.0, random_state=42)
-        model.fit(X_train, y_train)
-        
-        y_pred = model.predict(X_test)
-        r2 = r2_score(y_test, y_pred)
-        mae = mean_absolute_error(y_test, y_pred)
-        
-        st.session_state["r2_score"] = r2
-        st.session_state["mae"] = mae
-        st.session_state["feature_cols"] = feature_cols
-        st.session_state["test_indices"] = X_test.index.tolist()
-        st.session_state["df_analysis"] = df_model
-        st.session_state["y_actual_full"] = y
-        st.session_state["y_predicted_full"] = model.predict(X)
-        
-        return model, None, r2, mae
-        
-    except Exception as e:
-        return None, f"Error training model: {str(e)}", None, None
-
-def predict_revenue_lasso(df, model, fb_spend, instagram_spend, tiktok_spend, category_value=None):
-    if len(df) > 0:
-        last_fb_adstock = adstock(df['fb_spend'].values)[-1] if 'fb_spend' in df.columns else 0
-        last_insta_adstock = adstock(df['instagram_spend'].values)[-1] if 'instagram_spend' in df.columns else 0
-        last_tiktok_adstock = adstock(df['tiktok_spend'].values)[-1] if 'tiktok_spend' in df.columns else 0
-    else:
-        last_fb_adstock = last_insta_adstock = last_tiktok_adstock = 0
-    
-    decay_rate = 0.5
-    fb_adstock_pred = fb_spend + decay_rate * last_fb_adstock
-    insta_adstock_pred = instagram_spend + decay_rate * last_insta_adstock
-    tiktok_adstock_pred = tiktok_spend + decay_rate * last_tiktok_adstock
-    
-    prediction_row = {
-        'fb_adstock': fb_adstock_pred,
-        'insta_adstock': insta_adstock_pred,
-        'tiktok_adstock': tiktok_adstock_pred,
-        'fb_spend': fb_spend,
-        'instagram_spend': instagram_spend,
-        'tiktok_spend': tiktok_spend
-    }
-    
-    if category_value and 'category' in df.columns:
-        unique_cats = df['category'].unique()
-        for cat in unique_cats:
-            dummy_col = f'category_{cat}'
-            if dummy_col in st.session_state.get("feature_cols", []):
-                prediction_row[dummy_col] = 1 if cat == category_value else 0
-    
-    feature_cols = st.session_state.get("feature_cols", [])
-    for col in feature_cols:
-        if col not in prediction_row:
-            prediction_row[col] = 0
-    
-    features_df = pd.DataFrame([prediction_row])[feature_cols]
-    predicted_revenue = model.predict(features_df)[0]
-    
-    return predicted_revenue
-
 # ========== PROFESSIONAL LIGHT THEME CSS ==========
 st.markdown("""
 <style>
@@ -173,21 +58,10 @@ st.markdown("""
         margin-bottom: 0.5rem;
     }
     
-    h2 {
-        color: #1e293b;
-        font-weight: 700;
-        font-size: 1.8rem;
-        margin-top: 1rem;
-        margin-bottom: 0.75rem;
-        border-left: 4px solid #3b82f6;
-        padding-left: 15px;
-    }
-    
-    h3 {
+    h2, h3 {
         color: #1e293b;
         font-weight: 600;
-        font-size: 1.3rem;
-        margin-top: 0.75rem;
+        margin-top: 1rem;
     }
     
     /* Button styling */
@@ -214,7 +88,6 @@ st.markdown("""
         border-radius: 12px;
         font-weight: 600;
         padding: 12px 16px;
-        font-size: 1.1rem;
     }
     
     .streamlit-expanderContent {
@@ -401,281 +274,655 @@ st.markdown("""
     <hr style="height: 2px; background: linear-gradient(90deg, #FF4B4B, #FF9068, #FFD166, transparent); border: none; margin-top: -0.8rem;">
 """, unsafe_allow_html=True)
 
-# ========== SIDEBAR NAVIGATION ==========
-# Initialize session state
-if "page" not in st.session_state:
-    st.session_state["page"] = "home"
+# ========== DATA IMPORT ==========
+st.markdown("## 📁 Data Import")
+st.markdown("Upload your campaign data to get started")
 
-# Custom sidebar navigation
-with st.sidebar:
-    st.markdown("### 🚀 ADVENTA")
-    st.markdown("---")
-    
-    # Navigation buttons
-    if st.button("🏠 Home", use_container_width=True):
-        st.session_state["page"] = "home"
-        st.rerun()
-    
-    if st.button("📊 Dashboard", use_container_width=True):
-        if "cleaned_df" in st.session_state:
-            st.session_state["page"] = "dashboard"
-            st.rerun()
-        else:
-            st.warning("Please upload data first on the Home page")
-    
-    if st.button("🎯 Predict", use_container_width=True):
-        if "trained_model" in st.session_state:
-            st.session_state["page"] = "predict"
-            st.rerun()
-        else:
-            st.warning("Please train the model first on the Home page")
-    
-    if st.button("📈 Analytics", use_container_width=True):
-        if "trained_model" in st.session_state:
-            st.session_state["page"] = "analytics"
-            st.rerun()
-        else:
-            st.warning("Please train the model first on the Home page")
-    
-    st.markdown("---")
-    st.caption("v1.0.0 | AI-Powered")
+uploaded_file = st.file_uploader(
+    "Choose CSV file",
+    type=["csv"],
+    help="Upload CSV with columns: date, category, fb_spend, instagram_spend, tiktok_spend, total_revenue"
+)
 
-# ========== PAGE ROUTING ==========
-if st.session_state["page"] == "home":
-    # Welcome page content
-    st.markdown("## 🎯 Welcome to ADVENTA")
-    st.markdown("""
-    ### Your AI-Powered Campaign Spend Optimizer
+def adstock(x, decay=0.5):
+    """Calculate adstock transformation for carryover effect"""
+    result = []
+    for i, val in enumerate(x):
+        if i == 0:
+            result.append(val)
+        else:
+            result.append(val + decay * result[i-1])
+    return result
+
+def clean_ad_data(df):
+    df = df.copy()
+    df.columns = df.columns.str.lower().str.replace(" ", "_")
+    df = df.drop_duplicates()
     
-    **Features:**
-    - 🤖 **Machine Learning Predictions** using Lasso Regression
-    - 📊 **Real-time Analytics** with interactive visualizations
-    - 💰 **Budget Optimization** recommendations
-    - 🔮 **Revenue Forecasting** based on ad spend
+    numeric_cols = df.select_dtypes(include="number").columns
+    df[numeric_cols] = df[numeric_cols].fillna(0)
     
-    ### How it works:
-    1. Upload your campaign data (CSV format)
-    2. Let our AI train on your historical performance
-    3. Get predictions and optimization recommendations
-    """)
+    categorical_cols = df.select_dtypes(include="object").columns
+    df[categorical_cols] = df[categorical_cols].fillna("unknown")
     
-    uploaded_file = st.file_uploader(
-        "📁 Upload Campaign Data (CSV)",
-        type=["csv"],
-        help="Required columns: date, category, fb_spend, instagram_spend, tiktok_spend, total_revenue"
-    )
+    if "date" in df.columns:
+        df["date"] = pd.to_datetime(df["date"], dayfirst=True, errors="coerce")
     
-    if uploaded_file is not None:
-        raw_df = pd.read_csv(uploaded_file)
-        st.session_state["raw_df"] = raw_df
-        st.success("✅ File uploaded successfully! Click 'Process Data' to continue.")
+    if "total_revenue" in df.columns:
+        if (df["total_revenue"] == 0).all():
+            df = df.drop(columns=["total_revenue"])
+    
+    return df
+
+def train_prediction_model(df):
+    required_cols = ["total_revenue", "fb_spend", "instagram_spend", "tiktok_spend"]
+    missing = [c for c in required_cols if c not in df.columns]
+    
+    if missing:
+        return None, f"Missing columns: {', '.join(missing)}"
+    
+    if len(df) < 5:
+        return None, "Not enough data to train model. Need at least 5 rows of data."
+    
+    try:
+        df_model = df.copy()
+        df_model['fb_adstock'] = adstock(df_model['fb_spend'].values)
+        df_model['insta_adstock'] = adstock(df_model['instagram_spend'].values)
+        df_model['tiktok_adstock'] = adstock(df_model['tiktok_spend'].values)
         
-        if st.button("🚀 Process Data & Train Model", type="primary"):
-            with st.spinner("Training AI model..."):
-                cleaned_df = clean_ad_data(raw_df)
-                st.session_state["cleaned_df"] = cleaned_df
-                model, error, r2, mae = train_prediction_model(cleaned_df)
-                if model:
-                    st.session_state["trained_model"] = model
-                    st.session_state["model_type"] = "lasso"
-                    st.session_state["r2_score"] = r2
-                    st.session_state["mae"] = mae
-                    st.success("✅ Model trained successfully!")
-                    st.balloons()
-                    st.info("👉 Go to Dashboard or Predict tabs to see results")
-                else:
-                    st.error(f"Error: {error}")
-    
-    st.stop()
+        if 'category' in df_model.columns:
+            df_model = pd.get_dummies(df_model, columns=['category'], drop_first=True)
+        
+        feature_cols = [col for col in df_model.columns if col not in ['total_revenue', 'date']]
+        X = df_model[feature_cols]
+        y = df_model['total_revenue']
+        
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
+        
+        model = Lasso(alpha=1.0, random_state=42)
+        model.fit(X_train, y_train)
+        
+        y_pred = model.predict(X_test)
+        r2 = r2_score(y_test, y_pred)
+        mae = mean_absolute_error(y_test, y_pred)
+        
+        st.session_state["r2_score"] = r2
+        st.session_state["mae"] = mae
+        st.session_state["feature_cols"] = feature_cols
+        st.session_state["test_indices"] = X_test.index.tolist()
+        st.session_state["df_analysis"] = df_model
+        st.session_state["y_actual_full"] = y
+        st.session_state["y_predicted_full"] = model.predict(X)
+        
+        return model, None, r2, mae
+        
+    except Exception as e:
+        return None, f"Error training model: {str(e)}", None, None
 
-elif st.session_state["page"] == "dashboard":
-    st.markdown("## 📊 Dashboard Overview")
-    
-    if "cleaned_df" not in st.session_state:
-        st.warning("⚠️ Please upload and process data on the Home page first.")
+def predict_revenue_lasso(df, model, fb_spend, instagram_spend, tiktok_spend, category_value=None):
+    if len(df) > 0:
+        last_fb_adstock = adstock(df['fb_spend'].values)[-1] if 'fb_spend' in df.columns else 0
+        last_insta_adstock = adstock(df['instagram_spend'].values)[-1] if 'instagram_spend' in df.columns else 0
+        last_tiktok_adstock = adstock(df['tiktok_spend'].values)[-1] if 'tiktok_spend' in df.columns else 0
     else:
-        df = st.session_state["cleaned_df"]
-        
-        # Key metrics
-        total_revenue = df["total_revenue"].sum() if "total_revenue" in df.columns else 0
-        total_ad_spend = df[["fb_spend","instagram_spend","tiktok_spend"]].sum().sum() if all(col in df.columns for col in ["fb_spend","instagram_spend","tiktok_spend"]) else 0
-        total_campaigns = len(df)
-        avg_roi = ((total_revenue - total_ad_spend) / total_ad_spend * 100) if total_ad_spend > 0 else 0
-        
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("💰 Total Ad Spend", f"${total_ad_spend:,.2f}")
-        with col2:
-            st.metric("📊 Total Revenue", f"${total_revenue:,.2f}")
-        with col3:
-            st.metric("📈 Total Campaigns", total_campaigns)
-        with col4:
-            st.metric("🎯 Average ROI", f"{avg_roi:.1f}%", delta="Positive" if avg_roi > 0 else "Negative")
-        
-        # Channel spend breakdown
-        st.markdown("### 💰 Channel Spend Breakdown")
-        channel_spend = {
-            'Facebook': df['fb_spend'].sum() if 'fb_spend' in df.columns else 0,
-            'Instagram': df['instagram_spend'].sum() if 'instagram_spend' in df.columns else 0,
-            'TikTok': df['tiktok_spend'].sum() if 'tiktok_spend' in df.columns else 0
-        }
-        
-        fig = px.pie(values=list(channel_spend.values()), names=list(channel_spend.keys()), 
-                     title="Ad Spend Distribution by Channel", color_discrete_sequence=['#3b82f6', '#8b5cf6', '#ec4899'])
-        fig.update_layout(height=400)
-        st.plotly_chart(fig, use_container_width=True)
-
-elif st.session_state["page"] == "predict":
-    st.markdown("## 🎯 Campaign Predictor")
+        last_fb_adstock = last_insta_adstock = last_tiktok_adstock = 0
     
-    if "trained_model" not in st.session_state:
-        st.warning("⚠️ Please train the model first on the Home page.")
-    else:
-        df = st.session_state["cleaned_df"]
+    decay_rate = 0.5
+    fb_adstock_pred = fb_spend + decay_rate * last_fb_adstock
+    insta_adstock_pred = instagram_spend + decay_rate * last_insta_adstock
+    tiktok_adstock_pred = tiktok_spend + decay_rate * last_tiktok_adstock
+    
+    prediction_row = {
+        'fb_adstock': fb_adstock_pred,
+        'insta_adstock': insta_adstock_pred,
+        'tiktok_adstock': tiktok_adstock_pred,
+        'fb_spend': fb_spend,
+        'instagram_spend': instagram_spend,
+        'tiktok_spend': tiktok_spend
+    }
+    
+    if category_value and 'category' in df.columns:
+        unique_cats = df['category'].unique()
+        for cat in unique_cats:
+            dummy_col = f'category_{cat}'
+            if dummy_col in st.session_state.get("feature_cols", []):
+                prediction_row[dummy_col] = 1 if cat == category_value else 0
+    
+    feature_cols = st.session_state.get("feature_cols", [])
+    for col in feature_cols:
+        if col not in prediction_row:
+            prediction_row[col] = 0
+    
+    features_df = pd.DataFrame([prediction_row])[feature_cols]
+    predicted_revenue = model.predict(features_df)[0]
+    
+    return predicted_revenue
+
+if uploaded_file is not None:
+    raw_df = pd.read_csv(uploaded_file)
+
+    with st.expander("📄 Raw Data Preview", expanded=False):
+        st.dataframe(raw_df.head(), use_container_width=True)
+
+    # ---------- CLEAN DATA ----------
+    with st.expander("🧹 Data Processing & Model Training", expanded=False):
+        clean_button = st.button("🚀 Process Data & Train Model", use_container_width=True)
         
-        st.markdown("### 📊 Model Performance")
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("R² Score", f"{st.session_state.get('r2_score', 0):.3f}")
-        with col2:
-            st.metric("MAE", f"${st.session_state.get('mae', 0):,.0f}")
-        with col3:
-            confidence = "High" if st.session_state.get('r2_score', 0) > 0.8 else "Medium" if st.session_state.get('r2_score', 0) > 0.6 else "Low"
-            st.metric("Confidence", confidence)
-        
-        st.markdown("### 🎯 Make New Predictions")
-        st.markdown("Enter your proposed ad spend to forecast revenue")
-        
-        has_category = 'category' in df.columns
-        
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            fb_spend = st.number_input("💰 Facebook Spend ($)", min_value=0.0, value=1000.0, step=100.0, key="fb_input_pred")
-        with col2:
-            instagram_spend = st.number_input("📸 Instagram Spend ($)", min_value=0.0, value=1000.0, step=100.0, key="insta_input_pred")
-        with col3:
-            tiktok_spend = st.number_input("🎵 TikTok Spend ($)", min_value=0.0, value=1000.0, step=100.0, key="tiktok_input_pred")
-        
-        category_value = None
-        if has_category:
-            categories = df['category'].unique().tolist()
-            category_value = st.selectbox("📁 Campaign Category", categories)
-        
-        if st.button("🔮 Predict Revenue", type="primary", use_container_width=True):
-            model = st.session_state["trained_model"]
+        if clean_button or "cleaned_df" in st.session_state:
+            if clean_button:
+                with st.spinner("Processing data and training AI model..."):
+                    cleaned_df = clean_ad_data(raw_df)
+                    st.session_state["cleaned_df"] = cleaned_df
+                    model, error, r2, mae = train_prediction_model(cleaned_df)
+                    
+                    if model:
+                        st.session_state["trained_model"] = model
+                        st.session_state["model_type"] = "lasso"
+                        st.success("✅ Dataset processed and AI model trained successfully!")
+                        
+                        if r2 >= 0.9:
+                            st.balloons()
+                            st.success("🎯 Excellent model! R² > 0.9 - Very strong predictive power")
+                        elif r2 >= 0.7:
+                            st.info("👍 Good model - Ready for predictions")
+                        else:
+                            st.warning("⚠️ Model could be improved - Consider adding more features or data")
+                    else:
+                        st.error(f"Model training failed: {error}")
+                        st.session_state["model_type"] = "none"
             
-            with st.spinner("Calculating prediction..."):
-                predicted_revenue = predict_revenue_lasso(
-                    df, model, fb_spend, instagram_spend, tiktok_spend, category_value
+            if "cleaned_df" in st.session_state:
+                cleaned_df = st.session_state["cleaned_df"]
+                
+                col_metric1, col_metric2, col_metric3, col_metric4 = st.columns(4)
+                with col_metric1:
+                    st.metric("Total Rows", len(cleaned_df))
+                with col_metric2:
+                    st.metric("Total Columns", len(cleaned_df.columns))
+                with col_metric3:
+                    if "total_revenue" in cleaned_df.columns:
+                        st.metric("Total Revenue", f"${cleaned_df['total_revenue'].sum():,.0f}")
+                with col_metric4:
+                    if "trained_model" in st.session_state:
+                        st.metric("Model R²", f"{st.session_state.get('r2_score', 0):.3f}")
+                
+                st.subheader("Cleaned Data Preview")
+                st.dataframe(cleaned_df.head(10), use_container_width=True)
+                
+                if 'category' in cleaned_df.columns:
+                    st.subheader("Category Distribution")
+                    category_counts = cleaned_df['category'].value_counts()
+                    # Changed to Blues color scale to match theme
+                    fig = px.bar(x=category_counts.values, y=category_counts.index, 
+                                 orientation='h', color=category_counts.values,
+                                 color_continuous_scale='Blues')
+                    fig.update_layout(height=300, margin=dict(l=0, r=0, t=0, b=0))
+                    st.plotly_chart(fig, use_container_width=True)
+                
+                csv = cleaned_df.to_csv(index=False).encode("utf-8")
+                st.download_button(
+                    label="📥 Download Processed Dataset",
+                    data=csv,
+                    file_name="adventa_processed_data.csv",
+                    mime="text/csv"
                 )
+
+# ---------- PREDICT SECTION ----------
+    with st.expander("🎯 Predict Campaign Performance", expanded=False):
+        if "cleaned_df" not in st.session_state:
+            st.warning("⚠️ Please process your data and train the model first.")
+        elif st.session_state.get("model_type") != "lasso":
+            st.warning("⚠️ Model not trained successfully. Please re-upload and process data.")
+        else:
+            st.markdown("### 📊 Model Performance Metrics")
             
-            total_ad_spend = fb_spend + instagram_spend + tiktok_spend
-            roi = ((predicted_revenue - total_ad_spend) / total_ad_spend * 100) if total_ad_spend > 0 else 0
+            col_acc1, col_acc2, col_acc3, col_acc4 = st.columns(4)
+            with col_acc1:
+                st.metric("🎯 R² Score", f"{st.session_state.get('r2_score', 0):.3f}")
+                
+            with col_acc2:
+                st.metric("📉 MAE", f"${st.session_state.get('mae', 0):,.0f}")
+                
+            with col_acc3:
+                y_actual_full = st.session_state.get("y_actual_full")
+                y_predicted_full = st.session_state.get("y_predicted_full")
+                if y_actual_full is not None and len(y_actual_full) > 0:
+                    non_zero_mask = y_actual_full != 0
+                    if np.any(non_zero_mask):
+                        mape = np.mean(np.abs((y_actual_full[non_zero_mask] - y_predicted_full[non_zero_mask]) / y_actual_full[non_zero_mask])) * 100
+                        st.metric("📊 Accuracy", f"{100 - mape:.1f}%")
+                    else:
+                        st.metric("📊 Status", "Ready")
+                else:
+                    st.metric("📊 Status", "Ready")
+            with col_acc4:
+                confidence_level = "High" if st.session_state.get('r2_score', 0) > 0.8 else "Medium" if st.session_state.get('r2_score', 0) > 0.6 else "Low"
+                st.metric("💪 Confidence", confidence_level)
+            
+            st.markdown("### 📈 Actual vs Predicted Revenue")
+            
+            df = st.session_state["cleaned_df"]
+            
+            if "y_predicted_full" not in st.session_state:
+                st.info("Recalculating predictions for chart...")
+                df_temp = df.copy()
+                df_temp['fb_adstock'] = adstock(df_temp['fb_spend'].values)
+                df_temp['insta_adstock'] = adstock(df_temp['instagram_spend'].values)
+                df_temp['tiktok_adstock'] = adstock(df_temp['tiktok_spend'].values)
+                
+                if 'category' in df_temp.columns:
+                    df_temp = pd.get_dummies(df_temp, columns=['category'], drop_first=True)
+                
+                feature_cols = [col for col in df_temp.columns if col not in ['total_revenue', 'date']]
+                X_full = df_temp[feature_cols]
+                y_actual_full = df['total_revenue'].values
+                model = st.session_state["trained_model"]
+                y_predicted_full = model.predict(X_full)
+                
+                st.session_state["y_predicted_full"] = y_predicted_full
+                st.session_state["y_actual_full"] = y_actual_full
+                st.session_state["df_analysis"] = df_temp
+            else:
+                y_predicted_full = st.session_state["y_predicted_full"]
+                y_actual_full = st.session_state["y_actual_full"]
+            
+            if "date" in df.columns and len(df) > 0:
+                pred_df = pd.DataFrame({
+                    'date': pd.to_datetime(df['date']),
+                    'Actual Revenue': y_actual_full,
+                    'Predicted Revenue': y_predicted_full
+                })
+                pred_df = pred_df.sort_values('date')
+                
+                max_date = pred_df['date'].max()
+                min_date = pred_df['date'].min()
+                
+                col_date1, col_date2 = st.columns(2)
+                with col_date1:
+                    start_date = st.date_input("Start Date", value=min_date, min_value=min_date, max_value=max_date, key="start_date_pred")
+                with col_date2:
+                    end_date = st.date_input("End Date", value=max_date, min_value=min_date, max_value=max_date, key="end_date_pred")
+                
+                if start_date > end_date:
+                    st.error("Start date must be before end date")
+                    start_date, end_date = end_date, start_date
+                
+                filtered_df = pred_df[(pred_df['date'] >= pd.to_datetime(start_date)) & (pred_df['date'] <= pd.to_datetime(end_date))]
+                
+                # Removed markers/dots from the chart
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=filtered_df['date'], y=filtered_df['Actual Revenue'],
+                                        mode='lines', name='Actual Revenue',
+                                        line=dict(color='#3b82f6', width=2)))
+                fig.add_trace(go.Scatter(x=filtered_df['date'], y=filtered_df['Predicted Revenue'],
+                                        mode='lines', name='Predicted Revenue',
+                                        line=dict(color='#8b5cf6', width=2, dash='dash')))
+                
+                fig.update_layout(
+                    title="Model Predictions vs Actual Performance",
+                    xaxis_title="Date",
+                    yaxis_title="Revenue ($)",
+                    hovermode='x unified',
+                    height=400,
+                    margin=dict(l=0, r=0, t=40, b=0),
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                    plot_bgcolor='white',
+                    paper_bgcolor='white'
+                )
+                st.plotly_chart(fig, use_container_width=True)
+                
+                if len(filtered_df) >= 2:
+                    r2_range = r2_score(filtered_df['Actual Revenue'], filtered_df['Predicted Revenue'])
+                    mae_range = mean_absolute_error(filtered_df['Actual Revenue'], filtered_df['Predicted Revenue'])
+                    
+                    col_metric1, col_metric2 = st.columns(2)
+                    with col_metric1:
+                        st.metric("R² (Selected Range)", f"{r2_range:.3f}")
+                        st.caption("Proportion of variance explained (0-1, higher is better)")
+                    with col_metric2:
+                        st.metric("MAE (Selected Range)", f"${mae_range:,.0f}")
+                        st.caption("Average prediction error in dollars (lower is better)")
+            else:
+                st.warning("Date column not found or empty in dataset.")
             
             st.markdown("---")
-            st.markdown("### 📈 Prediction Results")
+            st.markdown("### 🎯 Make New Predictions")
+            st.markdown("Enter your proposed ad spend to forecast revenue")
             
-            col_result1, col_result2 = st.columns([1, 1])
-            with col_result1:
-                st.metric("💰 Total Ad Spend", f"${total_ad_spend:,.2f}")
-                st.metric("📊 Predicted Revenue", f"${predicted_revenue:,.2f}", delta=f"${predicted_revenue - total_ad_spend:,.2f}")
-            with col_result2:
-                if roi < 0:
-                    st.error(f"⚠️ Negative ROI: {roi:.1f}%")
-                elif roi > 100:
-                    st.success(f"🎉 Excellent ROI: {roi:.1f}%")
-                elif roi > 50:
-                    st.info(f"✅ Good ROI: {roi:.1f}%")
-                else:
-                    st.info(f"📈 ROI: {roi:.1f}%")
-
-elif st.session_state["page"] == "analytics":
-    st.markdown("## 📈 Advanced Analytics")
-    
-    if "trained_model" not in st.session_state:
-        st.warning("⚠️ Please train the model first on the Home page.")
-    else:
-        df = st.session_state["cleaned_df"]
-        model = st.session_state["trained_model"]
-        
-        # Create tabs for different analytics views
-        tab1, tab2, tab3 = st.tabs(["💰 Revenue Analysis", "📈 Time Series", "🎯 Channel Impact"])
-        
-        with tab1:
-            if "category" in df.columns:
-                st.markdown("### Total Revenue by Campaign Category")
-                category_revenue = df.groupby("category")["total_revenue"].sum().sort_values(ascending=True)
+            has_category = 'category' in df.columns
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                fb_spend = st.number_input("💰 Facebook Spend ($)", min_value=0.0, value=1000.0, step=100.0, key="fb_input")
+            with col2:
+                instagram_spend = st.number_input("📸 Instagram Spend ($)", min_value=0.0, value=1000.0, step=100.0, key="insta_input")
+            with col3:
+                tiktok_spend = st.number_input("🎵 TikTok Spend ($)", min_value=0.0, value=1000.0, step=100.0, key="tiktok_input")
+            
+            category_value = None
+            if has_category:
+                categories = df['category'].unique().tolist()
+                category_value = st.selectbox("📁 Campaign Category", categories)
+            
+            if st.button("🔮 Predict Revenue", type="primary", use_container_width=True):
+                model = st.session_state["trained_model"]
                 
-                fig = px.bar(x=category_revenue.values, y=category_revenue.index, 
-                            orientation='h', color=category_revenue.values,
-                            color_continuous_scale='Blues',
-                            text=category_revenue.values)
-                fig.update_traces(texttemplate='$%{text:,.0f}', textposition='outside')
-                fig.update_layout(height=400, margin=dict(l=0, r=0, t=0, b=0),
-                                 xaxis_title="Total Revenue ($)",
-                                 yaxis_title="Campaign Category")
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.info("Category column not found in dataset.")
-        
-        with tab2:
-            if "date" in df.columns:
-                st.markdown("### Revenue vs Ad Spend Over Time")
-                df['date'] = pd.to_datetime(df['date'])
-                df_time = df.copy()
-                df_time['total_spend'] = df_time[['fb_spend', 'instagram_spend', 'tiktok_spend']].sum(axis=1)
-                df_time = df_time.sort_values('date')
+                with st.spinner("Calculating prediction..."):
+                    predicted_revenue = predict_revenue_lasso(
+                        df, model, fb_spend, instagram_spend, tiktok_spend, category_value
+                    )
                 
-                fig = make_subplots(specs=[[{"secondary_y": True}]])
-                fig.add_trace(go.Scatter(x=df_time['date'], y=df_time['total_revenue'],
-                                        name='Revenue', line=dict(color='#3b82f6', width=3)),
-                             secondary_y=False)
-                fig.add_trace(go.Scatter(x=df_time['date'], y=df_time['total_spend'],
-                                        name='Ad Spend', line=dict(color='#ef4444', width=3, dash='dash')),
-                             secondary_y=True)
+                total_ad_spend = fb_spend + instagram_spend + tiktok_spend
+                roi = ((predicted_revenue - total_ad_spend) / total_ad_spend * 100) if total_ad_spend > 0 else 0
                 
-                fig.update_layout(title="Revenue vs Ad Spend Trend",
-                                 xaxis_title="Date",
-                                 height=450,
-                                 hovermode='x unified')
-                fig.update_yaxes(title_text="Revenue ($)", secondary_y=False)
-                fig.update_yaxes(title_text="Ad Spend ($)", secondary_y=True)
+                st.markdown("---")
+                st.markdown("### 📈 Prediction Results")
                 
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.info("Date column not found for time series analysis.")
-        
-        with tab3:
-            st.markdown("### Channel Impact on Revenue")
-            if hasattr(model, 'coef_'):
-                feature_cols = st.session_state.get("feature_cols", [])
-                coef_df = pd.DataFrame({'Feature': feature_cols, 'Coefficient': model.coef_})
-                channel_features = coef_df[coef_df['Feature'].str.contains('adstock|spend', case=False)]
-                
-                if not channel_features.empty:
-                    alias_mapping = {
-                        'fb_spend': 'Facebook Spend',
-                        'instagram_spend': 'Instagram Spend',
-                        'tiktok_spend': 'TikTok Spend',
-                        'fb_adstock': 'Facebook AdStock',
-                        'insta_adstock': 'Instagram AdStock',
-                        'tiktok_adstock': 'TikTok AdStock'
+                fig_gauge = go.Figure(go.Indicator(
+                    mode="gauge+number+delta",
+                    value=roi,
+                    title={'text': "ROI (%)", 'font': {'size': 24}},
+                    delta={'reference': 0, 'increasing': {'color': "green"}, 'decreasing': {'color': "red"}},
+                    gauge={
+                        'axis': {'range': [None, 200]},
+                        'bar': {'color': "#3b82f6"},
+                        'steps': [
+                            {'range': [0, 50], 'color': "#dbeafe"},
+                            {'range': [50, 100], 'color': "#bfdbfe"}
+                        ],
+                        'threshold': {'line': {'color': "red", 'width': 4}, 'thickness': 0.75, 'value': 0}
                     }
-                    channel_features['Feature'] = channel_features['Feature'].replace(alias_mapping)
-                    channel_features = channel_features.sort_values('Coefficient', ascending=True)
+                ))
+                fig_gauge.update_layout(height=250, margin=dict(l=0, r=0, t=40, b=0))
+                
+                col_result1, col_result2 = st.columns([1, 1])
+                with col_result1:
+                    st.metric("💰 Total Ad Spend", f"${total_ad_spend:,.2f}")
+                    st.metric("📊 Predicted Revenue", f"${predicted_revenue:,.2f}", delta=f"${predicted_revenue - total_ad_spend:,.2f}")
+                with col_result2:
+                    st.plotly_chart(fig_gauge, use_container_width=True)
+                
+                if roi < 0:
+                    st.error("⚠️ Negative ROI predicted. Consider adjusting your ad spend allocation.")
+                elif roi > 100:
+                    st.success("🎉 Excellent ROI predicted! This campaign looks very promising.")
+                elif roi > 50:
+                    st.info("✅ Good ROI predicted! Solid campaign performance expected.")
+                elif roi > 20:
+                    st.info("📈 Positive ROI predicted. Good potential for this campaign.")
+                else:
+                    st.warning("📊 Moderate ROI predicted. Consider optimizing your budget allocation.")
+                
+                with st.expander("🔍 View Detailed Calculation"):
+                    st.markdown("**Adstock Values (Carryover Effect):**")
+                    col_detail1, col_detail2, col_detail3 = st.columns(3)
+                    with col_detail1:
+                        st.metric("Facebook Adstock", f"${fb_spend + 0.5 * adstock(df['fb_spend'].values)[-1] if len(df) > 0 else fb_spend:,.2f}")
+                    with col_detail2:
+                        st.metric("Instagram Adstock", f"${instagram_spend + 0.5 * adstock(df['instagram_spend'].values)[-1] if len(df) > 0 else instagram_spend:,.2f}")
+                    with col_detail3:
+                        st.metric("TikTok Adstock", f"${tiktok_spend + 0.5 * adstock(df['tiktok_spend'].values)[-1] if len(df) > 0 else tiktok_spend:,.2f}")
                     
-                    fig = px.bar(channel_features, x='Coefficient', y='Feature',
-                                orientation='h', color='Coefficient',
+                    if has_category:
+                        st.markdown(f"**Selected Category:** {category_value}")
+                    
+                    # --- NEW SECTION: Investment Allocation Recommendation ---
+                    st.markdown("---")
+                    st.markdown("### 📊 Optimal Investment Allocation")
+                    
+                    # Extract coefficients from the trained model
+                    model_coef = st.session_state["trained_model"].coef_
+                    feature_names = st.session_state["feature_cols"]
+                    
+                    # Create a mapping for channel-specific coefficients
+                    channel_coefs = {}
+                    for name, coef in zip(feature_names, model_coef):
+                        if 'fb_spend' in name or 'fb_adstock' in name:
+                            channel_coefs['Facebook'] = channel_coefs.get('Facebook', 0) + abs(coef)
+                        elif 'instagram_spend' in name or 'insta_adstock' in name:
+                            channel_coefs['Instagram'] = channel_coefs.get('Instagram', 0) + abs(coef)
+                        elif 'tiktok_spend' in name or 'tiktok_adstock' in name:
+                            channel_coefs['TikTok'] = channel_coefs.get('TikTok', 0) + abs(coef)
+                    
+                    # Calculate percentages based on coefficient magnitudes
+                    if channel_coefs:
+                        total_impact = sum(channel_coefs.values())
+                        if total_impact > 0:
+                            fb_pct = (channel_coefs.get('Facebook', 0) / total_impact) * 100
+                            insta_pct = (channel_coefs.get('Instagram', 0) / total_impact) * 100
+                            tiktok_pct = (channel_coefs.get('TikTok', 0) / total_impact) * 100
+                            
+                            # Display the recommended allocation
+                            col_rec1, col_rec2, col_rec3 = st.columns(3)
+                            with col_rec1:
+                                st.metric("🎯 Facebook", f"{fb_pct:.1f}%", help="Recommended % of total budget based on model coefficients")
+                            with col_rec2:
+                                st.metric("🎯 Instagram", f"{insta_pct:.1f}%", help="Recommended % of total budget based on model coefficients")
+                            with col_rec3:
+                                st.metric("🎯 TikTok", f"{tiktok_pct:.1f}%", help="Recommended % of total budget based on model coefficients")
+                            
+                            # Show actual dollar amounts based on user's total spend
+                            st.caption(f"Based on your total spend of **${total_ad_spend:,.2f}**, the optimal allocation would be:")
+                            col_dol1, col_dol2, col_dol3 = st.columns(3)
+                            with col_dol1:
+                                st.info(f"💰 **Facebook:** ${(fb_pct/100) * total_ad_spend:,.2f}")
+                            with col_dol2:
+                                st.info(f"💰 **Instagram:** ${(insta_pct/100) * total_ad_spend:,.2f}")
+                            with col_dol3:
+                                st.info(f"💰 **TikTok:** ${(tiktok_pct/100) * total_ad_spend:,.2f}")
+                            
+                            # Add a comparison with current allocation
+                            st.markdown("**Comparison with Your Current Allocation:**")
+                            current_allocation = {
+                                'Facebook': fb_spend,
+                                'Instagram': instagram_spend,
+                                'TikTok': tiktok_spend
+                            }
+                            
+                            # Calculate Euclidean distance between current and optimal
+                            optimal_allocation = {
+                                'Facebook': (fb_pct/100) * total_ad_spend,
+                                'Instagram': (insta_pct/100) * total_ad_spend,
+                                'TikTok': (tiktok_pct/100) * total_ad_spend
+                            }
+                            
+                            distance = np.sqrt(sum((current_allocation[ch] - optimal_allocation[ch])**2 for ch in current_allocation))
+                            
+                            if distance < 100:
+                                st.success("✅ Your current allocation is very close to the optimal recommendation!")
+                            elif distance < 500:
+                                st.info("📊 Your current allocation is moderately aligned with optimal recommendations.")
+                            else:
+                                st.warning("⚠️ Consider reallocating your budget closer to the recommended percentages for better ROI.")
+                            
+                            # Optional: Show coefficient values for transparency
+                            with st.expander("📐 View Model Coefficient Details"):
+                                coef_df = pd.DataFrame({
+                                    'Channel': list(channel_coefs.keys()),
+                                    'Absolute Coefficient Sum': list(channel_coefs.values())
+                                }).sort_values('Absolute Coefficient Sum', ascending=False)
+                                st.dataframe(coef_df, use_container_width=True)
+                                st.caption("Higher coefficient values indicate stronger impact on revenue prediction.")
+                        else:
+                            st.info("Model coefficients are zero or near-zero. Consider adding more data or features.")
+                    else:
+                        st.info("Channel-specific coefficients not found in model features.")
+                    
+                    st.markdown("**Model Interpretation:**")
+                    st.markdown("- Lasso Regression automatically selects important features")
+                    st.markdown("- Adstock captures delayed/recurring effects of ad spend")
+                    st.markdown("- Category dummies account for campaign type differences")
+                    
+    # ---------- ANALYZE SECTION ----------
+    with st.expander("📊 Campaign Analytics Dashboard", expanded=False):
+        if "cleaned_df" not in st.session_state or "trained_model" not in st.session_state:
+            st.warning("⚠️ Please process your data and train the model first to see analytics.")
+        else:
+            df = st.session_state["cleaned_df"]
+            model = st.session_state["trained_model"]
+            
+            df_analysis = df.copy()
+            df_analysis['fb_adstock'] = adstock(df_analysis['fb_spend'].values)
+            df_analysis['insta_adstock'] = adstock(df_analysis['instagram_spend'].values)
+            df_analysis['tiktok_adstock'] = adstock(df_analysis['tiktok_spend'].values)
+            
+            if 'category' in df_analysis.columns:
+                df_analysis = pd.get_dummies(df_analysis, columns=['category'], drop_first=True)
+            
+            feature_cols = [col for col in df_analysis.columns if col not in ['total_revenue', 'date']]
+
+            total_revenue = df["total_revenue"].sum()
+            total_ad_spend = df[["fb_spend","instagram_spend","tiktok_spend"]].sum().sum()
+            total_campaigns = len(df)
+            avg_roi = ((total_revenue - total_ad_spend) / total_ad_spend * 100) if total_ad_spend > 0 else 0
+
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("💰 Total Ad Spend", f"${total_ad_spend:,.2f}")
+            with col2:
+                st.metric("📊 Total Revenue", f"${total_revenue:,.2f}")
+            with col3:
+                st.metric("📈 Total Campaigns", total_campaigns)
+            with col4:
+                st.metric("🎯 Average ROI", f"{avg_roi:.1f}%", delta="Positive" if avg_roi > 0 else "Negative")
+
+            tab1, tab2, tab3, tab4 = st.tabs(["💰 Revenue Analysis", "📈 Time Series", "🔥 Channel Performance", "🎯 Channel Contribution"])
+            
+            with tab1:
+                if "category" in df.columns:
+                    st.markdown("### Total Revenue by Campaign Category")
+                    category_revenue = df.groupby("category")["total_revenue"].sum().sort_values(ascending=True)
+                    
+                    # Changed to Blues color scale to match theme
+                    fig = px.bar(x=category_revenue.values, y=category_revenue.index, 
+                                orientation='h', color=category_revenue.values,
                                 color_continuous_scale='Blues',
-                                title="Channel Impact on Revenue")
-                    fig.update_layout(height=400, margin=dict(l=0, r=0, t=40, b=0),
-                                     xaxis_title="Coefficient Value",
-                                     yaxis_title="Channel")
+                                text=category_revenue.values)
+                    fig.update_traces(texttemplate='$%{text:,.0f}', textposition='outside')
+                    fig.update_layout(height=400, margin=dict(l=0, r=0, t=0, b=0),
+                                     xaxis_title="Total Revenue ($)",
+                                     yaxis_title="Campaign Category",
+                                     plot_bgcolor='white',
+                                     font=dict(color='black', size=12))
+                    st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.info("Category column not found in dataset.")
+            
+            with tab2:
+                if "date" in df.columns:
+                    st.markdown("### Revenue vs Ad Spend Over Time")
+                    df['date'] = pd.to_datetime(df['date'])
+                    df_time = df.copy()
+                    df_time['total_spend'] = df_time[['fb_spend', 'instagram_spend', 'tiktok_spend']].sum(axis=1)
+                    df_time = df_time.sort_values('date')
+                    
+                    fig = make_subplots(specs=[[{"secondary_y": True}]])
+                    fig.add_trace(go.Scatter(x=df_time['date'], y=df_time['total_revenue'],
+                                            name='Revenue', line=dict(color='#3b82f6', width=3)),
+                                 secondary_y=False)
+                    fig.add_trace(go.Scatter(x=df_time['date'], y=df_time['total_spend'],
+                                            name='Ad Spend', line=dict(color='#ef4444', width=3, dash='dash')),
+                                 secondary_y=True)
+                    
+                    fig.update_layout(title="Revenue vs Ad Spend Trend",
+                                     xaxis_title="Date",
+                                     height=450,
+                                     hovermode='x unified',
+                                     plot_bgcolor='white',
+                                     paper_bgcolor='white')
+                    fig.update_yaxes(title_text="Revenue ($)", secondary_y=False)
+                    fig.update_yaxes(title_text="Ad Spend ($)", secondary_y=True)
+                    
                     st.plotly_chart(fig, use_container_width=True)
                     
-                    st.caption("💡 **What is Adstock?** Adstock measures the *carryover effect* of advertising - how past ad spend continues to influence revenue in future days.")
+                    df_time['spend_exceeds_revenue'] = df_time['total_spend'] > df_time['total_revenue']
+                    if df_time['spend_exceeds_revenue'].any():
+                        exceed_df = df_time[df_time['spend_exceeds_revenue']]
+                        exceed_dates_list = exceed_df['date'].dt.strftime('%Y-%m-%d').tolist()
+                        exceed_dates_str = ', '.join(exceed_dates_list)
+                        st.warning(f"⚠️ Ad spend exceeded revenue on: {exceed_dates_str}")
+                    else:
+                        st.success("✅ Ad spend never exceeded revenue during this period!")
                 else:
-                    st.info("No channel-specific coefficients found")
+                    st.info("Date column not found for time series analysis.")
+            
+            with tab3:
+                st.markdown("### Channel Performance Heatmap")
+                if "category" in df.columns:
+                    if "date" in df.columns:
+                        min_date = df["date"].min().date()
+                        max_date = df["date"].max().date()
+                        
+                        col_date1, col_date2 = st.columns(2)
+                        with col_date1:
+                            start_date = st.date_input("Start Date", value=min_date, min_value=min_date, max_value=max_date, key="heatmap_start")
+                        with col_date2:
+                            end_date = st.date_input("End Date", value=max_date, min_value=min_date, max_value=max_date, key="heatmap_end")
+                        
+                        filtered_df = df[(df["date"] >= pd.to_datetime(start_date)) & (df["date"] <= pd.to_datetime(end_date))]
+                    else:
+                        filtered_df = df.copy()
+                    
+                    heatmap_data = filtered_df.groupby("category")[["fb_spend","instagram_spend","tiktok_spend"]].sum()
+                    
+                    if not heatmap_data.empty:
+                        heatmap_data_display = heatmap_data.rename(columns={
+                            'fb_spend': 'Facebook Spend',
+                            'instagram_spend': 'Instagram Spend',
+                            'tiktok_spend': 'TikTok Spend'
+                        })
+                        fig = px.imshow(heatmap_data_display.T, 
+                                       text_auto='.0f',
+                                       aspect="auto",
+                                       color_continuous_scale='Blues',
+                                       title="Ad Spend Heatmap")
+                        fig.update_layout(height=400,
+                                         xaxis_title="Category",
+                                         yaxis_title="Channel",
+                                         font=dict(color='black', size=12))
+                        st.plotly_chart(fig, use_container_width=True)
+                    else:
+                        st.info("No data available for selected date range")
+                else:
+                    st.info("Category column not found for heatmap.")
+            
+            with tab4:
+                st.markdown("### Channel Contribution Analysis")
+                if hasattr(model, 'coef_'):
+                    coef_df = pd.DataFrame({'Feature': feature_cols, 'Coefficient': model.coef_})
+                    channel_features = coef_df[coef_df['Feature'].str.contains('adstock|spend', case=False)]
+                    
+                    if not channel_features.empty:
+                        alias_mapping = {
+                            'fb_spend': 'Facebook Spend',
+                            'instagram_spend': 'Instagram Spend',
+                            'tiktok_spend': 'TikTok Spend',
+                            'fb_adstock': 'Facebook AdStock',
+                            'insta_adstock': 'Instagram AdStock',
+                            'tiktok_adstock': 'TikTok AdStock'
+                        }
+                        channel_features['Feature'] = channel_features['Feature'].replace(alias_mapping)
+                        channel_features = channel_features.sort_values('Coefficient', ascending=True)
+                        
+                        fig = px.bar(channel_features, x='Coefficient', y='Feature',
+                                    orientation='h', color='Coefficient',
+                                    color_continuous_scale='Blues',
+                                    title="Channel Impact on Revenue")
+                        fig.update_layout(height=300, margin=dict(l=0, r=0, t=40, b=0),
+                                         font=dict(color='black', size=12),
+                                         xaxis_title="Coefficient Value",
+                                         yaxis_title="Channel")
+                        st.plotly_chart(fig, use_container_width=True)
+                        
+                        st.dataframe(
+                            channel_features.style.background_gradient(subset=['Coefficient'], cmap='Blues', vmin=-1, vmax=1),
+                            use_container_width=True
+                        )
+                        st.caption("💡 **What is Adstock?** Adstock measures the *carryover effect* of advertising - how past ad spend continues to influence revenue in future days. Higher Adstock means ads have longer-lasting impact.")
+                    else:
+                        st.info("No channel-specific coefficients found")
+                else:
+                    st.info("Model coefficients not available")
 
 # ========== FOOTER ==========
 st.markdown("---")
@@ -684,4 +931,4 @@ st.markdown("""
     <p>🚀 Adventa - AI-Powered Campaign Spend Optimizer</p>
     <p style='font-size: 12px;'>Powered by Lasso Regression & Adstock Transformation</p>
 </div>
-""", unsafe_allow_html=True)
+""", unsafe_allow_html=True) to this code add
