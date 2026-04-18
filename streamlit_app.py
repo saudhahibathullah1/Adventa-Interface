@@ -179,8 +179,7 @@ st.markdown("""
         font-size: 1.8rem;
         margin-top: 1rem;
         margin-bottom: 0.75rem;
-        border-left: 4px solid #3b82f6;
-        padding-left: 15px;
+        padding-left: 0px;
     }
     
     h3 {
