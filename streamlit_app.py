@@ -329,53 +329,6 @@ st.markdown("""
     .section-highlight {
         animation: highlight 1.5s ease-out;
     }
-    
-    /* Welcome card styling */
-    .welcome-card {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        border-radius: 20px;
-        padding: 2rem;
-        margin-bottom: 2rem;
-        color: white;
-        text-align: center;
-    }
-    
-    .feature-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-        gap: 1.5rem;
-        margin: 2rem 0;
-    }
-    
-    .feature-item {
-        background: white;
-        border-radius: 15px;
-        padding: 1.5rem;
-        text-align: center;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        transition: transform 0.3s ease;
-    }
-    
-    .feature-item:hover {
-        transform: translateY(-5px);
-    }
-    
-    .feature-icon {
-        font-size: 2.5rem;
-        margin-bottom: 1rem;
-    }
-    
-    .feature-title {
-        font-size: 1.2rem;
-        font-weight: 700;
-        color: #1e293b;
-        margin-bottom: 0.5rem;
-    }
-    
-    .feature-desc {
-        font-size: 0.9rem;
-        color: #64748b;
-    }
 </style>
 
 <script>
@@ -469,6 +422,21 @@ st.markdown("""
         border: 1px solid rgba(255,75,75,0.3);
         margin-left: 15px;
     }
+    
+    .nav-button {
+        background: transparent;
+        border: 1px solid rgba(255,255,255,0.2);
+        color: white;
+        padding: 8px 16px;
+        border-radius: 10px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+    
+    .nav-button:hover {
+        background: rgba(255,255,255,0.1);
+        border-color: rgba(255,75,75,0.5);
+    }
     </style>
     
     <div class="header-container">
@@ -488,53 +456,23 @@ st.markdown("""
 
 # ========== WELCOME SECTION ==========
 st.markdown('<div id="welcome-section"></div>', unsafe_allow_html=True)
+st.markdown("## 🎯 Welcome to ADVENTA")
 st.markdown("""
-<div class="welcome-card">
-    <h2 style="color: white; margin-bottom: 1rem;">🎯 Welcome to ADVENTA</h2>
-    <p style="font-size: 1.2rem; margin-bottom: 2rem;">Your AI-Powered Campaign Spend Optimizer</p>
-    
-    <div class="feature-grid">
-        <div class="feature-item">
-            <div class="feature-icon">🤖</div>
-            <div class="feature-title">Machine Learning Predictions</div>
-            <div class="feature-desc">Using Lasso Regression for accurate revenue forecasting</div>
-        </div>
-        <div class="feature-item">
-            <div class="feature-icon">📊</div>
-            <div class="feature-title">Real-time Analytics</div>
-            <div class="feature-desc">Interactive visualizations and performance tracking</div>
-        </div>
-        <div class="feature-item">
-            <div class="feature-icon">💰</div>
-            <div class="feature-title">Budget Optimization</div>
-            <div class="feature-desc">Smart allocation recommendations to maximize ROI</div>
-        </div>
-        <div class="feature-item">
-            <div class="feature-icon">🔮</div>
-            <div class="feature-title">Revenue Forecasting</div>
-            <div class="feature-desc">Predict campaign performance before you spend</div>
-        </div>
-    </div>
-    
-    <div style="background: rgba(255,255,255,0.2); border-radius: 15px; padding: 1.5rem; margin-top: 1rem;">
-        <h3 style="color: white; margin-bottom: 1rem;">📋 How it works:</h3>
-        <div style="display: flex; justify-content: space-around; flex-wrap: wrap; gap: 1rem;">
-            <div style="text-align: center;">
-                <div style="font-size: 2rem;">1️⃣</div>
-                <div>Upload CSV data</div>
-            </div>
-            <div style="text-align: center;">
-                <div style="font-size: 2rem;">2️⃣</div>
-                <div>AI trains on history</div>
-            </div>
-            <div style="text-align: center;">
-                <div style="font-size: 2rem;">3️⃣</div>
-                <div>Get predictions & insights</div>
-            </div>
-        </div>
-    </div>
-</div>
-""", unsafe_allow_html=True)
+### Your AI-Powered Campaign Spend Optimizer
+
+**Features:**
+- 🤖 **Machine Learning Predictions** using Lasso Regression
+- 📊 **Real-time Analytics** with interactive visualizations
+- 💰 **Budget Optimization** recommendations
+- 🔮 **Revenue Forecasting** based on ad spend
+
+### How it works:
+1. Upload your campaign data (CSV format)
+2. Let our AI train on your historical performance
+3. Get predictions and optimization recommendations
+""")
+
+st.markdown("---")
 
 # ========== SIDEBAR NAVIGATION ==========
 with st.sidebar:
@@ -545,7 +483,7 @@ with st.sidebar:
     st.markdown("""
     <div style="display: flex; flex-direction: column; gap: 8px;">
         <a href="#" style="text-decoration: none;">
-            <button style="width: 100%; padding: 10px; background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600;">
+            <button style="width: 100%; padding: 10px; background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600;">
                 🏠 Home
             </button>
         </a>
@@ -569,13 +507,7 @@ with st.sidebar:
     
     st.markdown("---")
     
-    # Status indicators
-    if "trained_model" in st.session_state:
-        st.success("✅ Model Ready")
-    else:
-        st.info("⏳ No model loaded")
-    
-    st.caption("v1.0.0 | AI-Powered")
+    st.caption("v1.0.0 | Analyzer")
 
 # ========== DATA IMPORT SECTION ==========
 st.markdown('<div id="data-import"></div>', unsafe_allow_html=True)
