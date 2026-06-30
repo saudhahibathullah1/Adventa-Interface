@@ -9,6 +9,8 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 import matplotlib.pyplot as plt
 import seaborn as sns
+from datetime import datetime, timedelta
+import random
 
 # ========== PAGE CONFIGURATION ==========
 st.set_page_config(
@@ -132,6 +134,49 @@ def predict_revenue_lasso(df, model, fb_spend, instagram_spend, tiktok_spend, ca
     predicted_revenue = model.predict(features_df)[0]
     
     return predicted_revenue
+
+def generate_synthetic_data(num_rows=100, start_date="2024-01-01"):
+    """Generate synthetic campaign data"""
+    categories = ['Home', 'Electronics', 'Clothing', 'Beauty']
+    
+    # Create date range (weekly data)
+    start = datetime.strptime(start_date, "%Y-%m-%d")
+    dates = [start + timedelta(days=7*i) for i in range(num_rows)]
+    
+    data = {
+        'date': dates,
+        'campaign_ID': [random.randint(1000, 9999) for _ in range(num_rows)],
+        'category': [random.choice(categories) for _ in range(num_rows)],
+        'fb_spend': [],
+        'instagram_spend': [],
+        'tiktok_spend': [],
+        'total_revenue': []
+    }
+    
+    # Generate realistic spend and revenue patterns
+    for i in range(num_rows):
+        # Base spend with some randomness and trends
+        base_spend = 1000 + (i % 10) * 200 + random.randint(-500, 500)
+        fb = max(0, base_spend * random.uniform(0.3, 1.2))
+        insta = max(0, base_spend * random.uniform(0.3, 1.2))
+        tiktok = max(0, base_spend * random.uniform(0.3, 1.2))
+        
+        data['fb_spend'].append(round(fb, 2))
+        data['instagram_spend'].append(round(insta, 2))
+        data['tiktok_spend'].append(round(tiktok, 2))
+        
+        # Revenue is influenced by spend with some randomness
+        total_spend = fb + insta + tiktok
+        revenue_multiplier = random.uniform(1.5, 3.0)
+        revenue = total_spend * revenue_multiplier + random.uniform(-500, 500)
+        data['total_revenue'].append(round(max(0, revenue), 2))
+    
+    df = pd.DataFrame(data)
+    
+    # Ensure date format is consistent
+    df['date'] = pd.to_datetime(df['date'])
+    
+    return df
 
 # ========== PROFESSIONAL LIGHT THEME CSS ==========
 st.markdown("""
@@ -328,6 +373,20 @@ st.markdown("""
     .section-highlight {
         animation: highlight 1.5s ease-out;
     }
+    
+    /* Generator card styling */
+    .generator-card {
+        background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+        border-radius: 16px;
+        padding: 20px;
+        border: 2px dashed #94a3b8;
+        margin: 10px 0;
+    }
+    
+    .generator-card:hover {
+        border-color: #3b82f6;
+        background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+    }
 </style>
 
 <script>
@@ -421,21 +480,6 @@ st.markdown("""
         border: 1px solid rgba(255,75,75,0.3);
         margin-left: 15px;
     }
-    
-    .nav-button {
-        background: transparent;
-        border: 1px solid rgba(255,255,255,0.2);
-        color: white;
-        padding: 8px 16px;
-        border-radius: 10px;
-        cursor: pointer;
-        transition: all 0.3s ease;
-    }
-    
-    .nav-button:hover {
-        background: rgba(255,255,255,0.1);
-        border-color: rgba(255,75,75,0.5);
-    }
     </style>
     
     <div class="header-container">
@@ -464,9 +508,10 @@ st.markdown("""
 - 📊 **Real-time Analytics** with interactive visualizations
 - 💰 **Budget Optimization** recommendations
 - 🔮 **Revenue Forecasting** based on ad spend
+- 📁 **Synthetic Data Generator** - Create realistic campaign data
 
 ### How it works:
-1. Upload your campaign data (CSV format)
+1. Generate synthetic data or upload your campaign data (CSV format)
 2. Let our tool train on your historical performance
 3. Get predictions and optimization recommendations
 """)
@@ -491,6 +536,11 @@ with st.sidebar:
                 📁 Data Import
             </button>
         </a>
+        <a href="#generator-section" style="text-decoration: none;">
+            <button style="width: 100%; padding: 10px; background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600;">
+                🎨 Generate Data
+            </button>
+        </a>
         <a href="#predict-section" style="text-decoration: none;">
             <button style="width: 100%; padding: 10px; background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600;">
                 🎯 Predict
@@ -508,10 +558,119 @@ with st.sidebar:
     
     st.caption("v1.0.0 | Analyzer")
 
+# ========== SYNTHETIC DATA GENERATOR SECTION ==========
+st.markdown('<div id="generator-section"></div>', unsafe_allow_html=True)
+st.markdown("## 🎨 Synthetic Data Generator")
+st.markdown("Generate realistic campaign data to test and explore Adventa's capabilities")
+
+with st.expander("📊 Generate Synthetic Data", expanded=True):
+    st.markdown("""
+    <div class="generator-card">
+        <p style="font-weight: 500; color: #1e293b; margin-bottom: 10px;">
+            💡 Generate realistic ad campaign data with the following parameters:
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    col_gen1, col_gen2 = st.columns(2)
+    
+    with col_gen1:
+        num_rows = st.number_input(
+            "📊 Number of Campaigns", 
+            min_value=50, 
+            max_value=500, 
+            value=100, 
+            step=10,
+            help="How many campaign records to generate"
+        )
+        
+    with col_gen2:
+        start_date = st.date_input(
+            "📅 Start Date", 
+            value=datetime(2024, 1, 1),
+            help="Starting date for the campaign data"
+        )
+    
+    if st.button("🎲 Generate Synthetic Data", type="primary", use_container_width=True):
+        with st.spinner("Generating synthetic campaign data..."):
+            synthetic_df = generate_synthetic_data(num_rows, start_date.strftime("%Y-%m-%d"))
+            st.session_state["synthetic_df"] = synthetic_df
+            
+            st.success(f"✅ Successfully generated {len(synthetic_df)} synthetic campaign records!")
+            
+            # Display summary metrics
+            col_metric1, col_metric2, col_metric3, col_metric4 = st.columns(4)
+            with col_metric1:
+                st.metric("📊 Total Campaigns", len(synthetic_df))
+            with col_metric2:
+                st.metric("💰 Total Ad Spend", f"${synthetic_df[['fb_spend','instagram_spend','tiktok_spend']].sum().sum():,.0f}")
+            with col_metric3:
+                st.metric("📈 Total Revenue", f"${synthetic_df['total_revenue'].sum():,.0f}")
+            with col_metric4:
+                categories_count = synthetic_df['category'].nunique()
+                st.metric("🏷️ Categories", categories_count)
+            
+            # Display data preview
+            st.subheader("📄 Data Preview")
+            st.dataframe(synthetic_df.head(10), use_container_width=True)
+            
+            # Category distribution
+            st.subheader("📊 Category Distribution")
+            category_counts = synthetic_df['category'].value_counts()
+            fig = px.pie(values=category_counts.values, names=category_counts.index, 
+                        title="Campaign Category Distribution",
+                        color_discrete_sequence=px.colors.qualitative.Set3)
+            fig.update_layout(height=300, margin=dict(l=0, r=0, t=40, b=0))
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Download button
+            csv = synthetic_df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Download Synthetic Data as CSV",
+                data=csv,
+                file_name=f"synthetic_campaign_data_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+            
+            st.info("💡 This synthetic data is now ready to be used for analysis. Go to the 'Data Import' section to upload and process it, or click the download button above to save it locally.")
+
 # ========== DATA IMPORT SECTION ==========
 st.markdown('<div id="data-import"></div>', unsafe_allow_html=True)
 st.markdown("## 📁 Data Import")
 st.markdown("Upload your campaign data to get started")
+
+# Option to use synthetic data directly
+if "synthetic_df" in st.session_state:
+    col_import1, col_import2 = st.columns([2, 1])
+    with col_import1:
+        st.info("💡 Synthetic data is available! You can either upload your own CSV or use the generated data.")
+    with col_import2:
+        if st.button("🔄 Use Synthetic Data", use_container_width=True):
+            synthetic_df = st.session_state["synthetic_df"]
+            
+            with st.spinner("Processing synthetic data and training AI model..."):
+                cleaned_df = clean_ad_data(synthetic_df)
+                st.session_state["cleaned_df"] = cleaned_df
+                model, error, r2, mae = train_prediction_model(cleaned_df)
+                
+                if model:
+                    st.session_state["trained_model"] = model
+                    st.session_state["model_type"] = "lasso"
+                    st.success("✅ Synthetic dataset processed and AI model trained successfully!")
+                    
+                    if r2 >= 0.9:
+                        st.balloons()
+                        st.success("🎯 Excellent model! R² > 0.9 - Very strong predictive power")
+                    elif r2 >= 0.7:
+                        st.info("👍 Good model - Ready for predictions")
+                    else:
+                        st.warning("⚠️ Model could be improved - Consider generating more data")
+                else:
+                    st.error(f"Model training failed: {error}")
+                    st.session_state["model_type"] = "none"
+            
+            st.rerun()
 
 uploaded_file = st.file_uploader(
     "Choose CSV file",
@@ -1001,6 +1160,7 @@ with st.expander("📊 Campaign Analytics Dashboard", expanded=False):
                     st.info("No channel-specific coefficients found")
             else:
                 st.info("Model coefficients not available")
+
 # ========== FOOTER ==========
 st.markdown("---")
 st.markdown("""
