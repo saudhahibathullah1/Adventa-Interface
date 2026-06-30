@@ -633,12 +633,12 @@ with st.sidebar:
 # ========== DATA IMPORT SECTION ==========
 st.markdown('<div id="data-import"></div>', unsafe_allow_html=True)
 st.markdown("## 📁 Data Import")
-st.markdown("Upload your campaign data to get started")
+st.markdown("Upload your campaign data or generate your synthetic data to get started")
 
 # Synthetic Data Generation Section
 with st.expander("🔮 Generate Synthetic Data", expanded=False):
     st.markdown("### Generate Sample Campaign Data")
-    st.markdown("Generate 500 synthetic campaign records with strong predictive patterns (R² > 0.9)")
+    st.markdown("Generate 500 synthetic campaign records with strong predictive patterns")
     
     col_gen1, col_gen2 = st.columns([2, 1])
     with col_gen1:
