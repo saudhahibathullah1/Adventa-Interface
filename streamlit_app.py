@@ -32,61 +32,53 @@ def adstock(x, decay=0.5):
     return result
 
 def clean_ad_data(df):
+    """Clean and prepare data with proper date handling"""
     df = df.copy()
     df.columns = df.columns.str.lower().str.replace(" ", "_")
     df = df.drop_duplicates()
     
+    # Handle date column with multiple format attempts
+    if "date" in df.columns:
+        # Try multiple date formats
+        date_formats = ['%d/%m/%Y', '%m/%d/%Y', '%Y-%m-%d', '%d-%m-%Y', '%m-%d-%Y']
+        
+        for date_format in date_formats:
+            try:
+                df["date"] = pd.to_datetime(df["date"], format=date_format, errors='coerce')
+                # Check if conversion was successful (less than 10% nulls)
+                if df["date"].isna().sum() / len(df) < 0.1:
+                    break
+            except:
+                continue
+        
+        # If still having issues, try pandas auto-detection
+        if df["date"].isna().sum() / len(df) > 0.1:
+            df["date"] = pd.to_datetime(df["date"], errors='coerce')
+        
+        # Sort by date
+        df = df.sort_values('date').reset_index(drop=True)
+    
+    # Handle numeric columns
     numeric_cols = df.select_dtypes(include="number").columns
     df[numeric_cols] = df[numeric_cols].fillna(0)
     
+    # Handle categorical columns
     categorical_cols = df.select_dtypes(include="object").columns
     df[categorical_cols] = df[categorical_cols].fillna("unknown")
     
-    # Handle date column with multiple formats
+    # Remove rows with invalid dates
     if "date" in df.columns:
-        # Try different date formats
-        date_formats = [
-            '%d/%m/%Y',  # 1/1/2024
-            '%d-%m-%Y',  # 1-1-2024
-            '%m/%d/%Y',  # 1/1/2024 (US format)
-            '%Y-%m-%d',  # 2024-01-01
-            '%d/%m/%y',  # 1/1/24
-            '%m/%d/%y',  # 1/1/24 (US format)
-            '%d-%m-%y',  # 1-1-24
-            '%Y/%m/%d',  # 2024/1/1
-        ]
-        
-        # Try to convert with the most common format first
-        try:
-            # First try with dayfirst=True for dd/mm/yyyy format
-            df["date"] = pd.to_datetime(df["date"], dayfirst=True, errors="coerce")
-        except:
-            # If that fails, try other formats
-            for fmt in date_formats:
-                try:
-                    df["date"] = pd.to_datetime(df["date"], format=fmt, errors="coerce")
-                    if df["date"].notna().any():
-                        break
-                except:
-                    continue
-        
-        # If still having issues, try letting pandas infer
-        if df["date"].isna().all():
-            try:
-                df["date"] = pd.to_datetime(df["date"], errors="coerce")
-            except:
-                pass
-        
-        # Drop rows where date couldn't be parsed
-        df = df.dropna(subset=["date"])
+        df = df.dropna(subset=['date'])
     
-    if "total_revenue" in df.columns:
-        if (df["total_revenue"] == 0).all():
-            df = df.drop(columns=["total_revenue"])
+    # Remove any rows with negative revenue or spend
+    for col in ["total_revenue", "fb_spend", "instagram_spend", "tiktok_spend"]:
+        if col in df.columns:
+            df = df[df[col] >= 0]
     
     return df
 
 def train_prediction_model(df):
+    """Train Lasso regression model with proper error handling"""
     required_cols = ["total_revenue", "fb_spend", "instagram_spend", "tiktok_spend"]
     missing = [c for c in required_cols if c not in df.columns]
     
@@ -109,14 +101,33 @@ def train_prediction_model(df):
         X = df_model[feature_cols]
         y = df_model['total_revenue']
         
+        # Handle case where we have very few samples
+        if len(X) < 10:
+            # Use all data for training if test split would be too small
+            model = Lasso(alpha=1.0, random_state=42)
+            model.fit(X, y)
+            y_pred = model.predict(X)
+            r2 = r2_score(y, y_pred)
+            mae = mean_absolute_error(y, y_pred)
+            
+            st.session_state["r2_score"] = r2
+            st.session_state["mae"] = mae
+            st.session_state["feature_cols"] = feature_cols
+            st.session_state["test_indices"] = X.index.tolist()
+            st.session_state["df_analysis"] = df_model
+            st.session_state["y_actual_full"] = y
+            st.session_state["y_predicted_full"] = model.predict(X)
+            
+            return model, None, r2, mae
+        
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
         
         model = Lasso(alpha=1.0, random_state=42)
         model.fit(X_train, y_train)
         
         y_pred = model.predict(X_test)
-        r2 = r2_score(y_test, y_pred)
-        mae = mean_absolute_error(y_test, y_pred)
+        r2 = r2_score(y_test, y_pred) if len(y_test) > 0 else 0
+        mae = mean_absolute_error(y_test, y_pred) if len(y_test) > 0 else 0
         
         st.session_state["r2_score"] = r2
         st.session_state["mae"] = mae
@@ -188,28 +199,24 @@ def generate_synthetic_data(n_records=500):
     categories_choice = np.random.choice(categories, n_records, p=[0.30, 0.25, 0.25, 0.20])
     
     # Generate ad spend with realistic patterns
-    # Facebook spend: 500-5000 with some seasonality
     fb_spend = np.random.gamma(shape=2, scale=1000, size=n_records) + 500
     fb_spend = np.clip(fb_spend, 500, 5000)
     
-    # Instagram spend: 500-4000
     insta_spend = np.random.gamma(shape=2, scale=800, size=n_records) + 500
     insta_spend = np.clip(insta_spend, 500, 4000)
     
-    # TikTok spend: 500-3500
     tiktok_spend = np.random.gamma(shape=2, scale=700, size=n_records) + 500
     tiktok_spend = np.clip(tiktok_spend, 500, 3500)
     
     # Create revenue with strong predictive patterns
-    # Base revenue from ad spend (with diminishing returns)
     base_revenue = (
         0.8 * fb_spend + 
         1.0 * insta_spend + 
         0.9 * tiktok_spend +
-        0.3 * (fb_spend * insta_spend) / 1000  # interaction effect
+        0.3 * (fb_spend * insta_spend) / 1000
     )
     
-    # Category multipliers (different ROIs per category)
+    # Category multipliers
     category_multipliers = {
         'Home': 1.1,
         'Electronics': 1.0,
@@ -217,30 +224,30 @@ def generate_synthetic_data(n_records=500):
         'Clothing': 0.95
     }
     
-    # Apply category multipliers
     category_effects = np.array([category_multipliers[cat] for cat in categories_choice])
     base_revenue = base_revenue * category_effects
     
-    # Add seasonality (quarterly patterns)
-    seasonality = 1 + 0.1 * np.sin(np.array([i for i in range(n_records)]) * 2 * np.pi / 52)  # 52 weeks cycle
+    # Seasonality
+    seasonality = 1 + 0.1 * np.sin(np.array([i for i in range(n_records)]) * 2 * np.pi / 52)
     base_revenue = base_revenue * seasonality
     
-    # Add adstock effect (carryover from previous periods)
+    # Adstock effect
     adstock_effect = np.zeros(n_records)
     for i in range(1, n_records):
         adstock_effect[i] = 0.15 * (fb_spend[i-1] + insta_spend[i-1] + tiktok_spend[i-1])
     
-    # Add some random noise but keep R² high
-    noise = np.random.normal(0, 0.05 * base_revenue, n_records)  # 5% noise
-    noise += np.random.normal(0, 100, n_records)  # small constant noise
+    # Add random noise
+    noise = np.random.normal(0, 0.05 * base_revenue, n_records)
+    noise += np.random.normal(0, 100, n_records)
     
-    # Calculate final revenue
     total_revenue = base_revenue + adstock_effect + noise
-    total_revenue = np.maximum(total_revenue, 3000)  # Minimum revenue
+    total_revenue = np.maximum(total_revenue, 3000)
     
-    # Create dataframe
+    # Format dates as DD/MM/YYYY to match your data format
+    date_strings = [d.strftime('%d/%m/%Y') for d in dates]
+    
     df = pd.DataFrame({
-        'date': dates,
+        'date': date_strings,
         'campaign_ID': campaign_ids,
         'category': categories_choice,
         'fb_spend': np.round(fb_spend, 2),
@@ -449,7 +456,6 @@ st.markdown("""
 </style>
 
 <script>
-    // Function to scroll to section with offset for header
     function scrollToSection(sectionId) {
         const element = document.getElementById(sectionId);
         if (element) {
@@ -462,7 +468,6 @@ st.markdown("""
                 behavior: "smooth"
             });
             
-            // Add highlight class
             element.classList.add('section-highlight');
             setTimeout(() => {
                 element.classList.remove('section-highlight');
@@ -596,7 +601,6 @@ with st.sidebar:
     st.markdown("### 🚀 ADVENTA")
     st.markdown("---")
     
-    # Navigation buttons with HTML links for smooth scrolling
     st.markdown("""
     <div style="display: flex; flex-direction: column; gap: 8px;">
         <a href="#" style="text-decoration: none;">
@@ -652,7 +656,6 @@ with st.expander("🔮 Generate Synthetic Data", expanded=False):
         st.markdown("### 📊 Synthetic Data Preview")
         st.dataframe(synthetic_df.head(100), use_container_width=True)
         
-        # Download button for synthetic data
         csv = synthetic_df.to_csv(index=False).encode("utf-8")
         st.download_button(
             label="📥 Download Synthetic Data (CSV)",
@@ -709,37 +712,40 @@ if uploaded_file is not None:
             if "cleaned_df" in st.session_state:
                 cleaned_df = st.session_state["cleaned_df"]
                 
-                col_metric1, col_metric2, col_metric3, col_metric4 = st.columns(4)
-                with col_metric1:
-                    st.metric("Total Rows", len(cleaned_df))
-                with col_metric2:
-                    st.metric("Total Columns", len(cleaned_df.columns))
-                with col_metric3:
-                    if "total_revenue" in cleaned_df.columns:
-                        st.metric("Total Revenue", f"${cleaned_df['total_revenue'].sum():,.0f}")
-                with col_metric4:
-                    if "trained_model" in st.session_state:
-                        st.metric("Model R²", f"{st.session_state.get('r2_score', 0):.3f}")
-                
-                st.subheader("Cleaned Data Preview")
-                st.dataframe(cleaned_df.head(10), use_container_width=True)
-                
-                if 'category' in cleaned_df.columns:
-                    st.subheader("Category Distribution")
-                    category_counts = cleaned_df['category'].value_counts()
-                    fig = px.bar(x=category_counts.values, y=category_counts.index, 
-                                 orientation='h', color=category_counts.values,
-                                 color_continuous_scale='Blues')
-                    fig.update_layout(height=300, margin=dict(l=0, r=0, t=0, b=0))
-                    st.plotly_chart(fig, use_container_width=True)
-                
-                csv = cleaned_df.to_csv(index=False).encode("utf-8")
-                st.download_button(
-                    label="📥 Download Processed Dataset",
-                    data=csv,
-                    file_name="adventa_processed_data.csv",
-                    mime="text/csv"
-                )
+                if len(cleaned_df) > 0:
+                    col_metric1, col_metric2, col_metric3, col_metric4 = st.columns(4)
+                    with col_metric1:
+                        st.metric("Total Rows", len(cleaned_df))
+                    with col_metric2:
+                        st.metric("Total Columns", len(cleaned_df.columns))
+                    with col_metric3:
+                        if "total_revenue" in cleaned_df.columns:
+                            st.metric("Total Revenue", f"${cleaned_df['total_revenue'].sum():,.0f}")
+                    with col_metric4:
+                        if "trained_model" in st.session_state:
+                            st.metric("Model R²", f"{st.session_state.get('r2_score', 0):.3f}")
+                    
+                    st.subheader("Cleaned Data Preview")
+                    st.dataframe(cleaned_df.head(10), use_container_width=True)
+                    
+                    if 'category' in cleaned_df.columns:
+                        st.subheader("Category Distribution")
+                        category_counts = cleaned_df['category'].value_counts()
+                        fig = px.bar(x=category_counts.values, y=category_counts.index, 
+                                     orientation='h', color=category_counts.values,
+                                     color_continuous_scale='Blues')
+                        fig.update_layout(height=300, margin=dict(l=0, r=0, t=0, b=0))
+                        st.plotly_chart(fig, use_container_width=True)
+                    
+                    csv = cleaned_df.to_csv(index=False).encode("utf-8")
+                    st.download_button(
+                        label="📥 Download Processed Dataset",
+                        data=csv,
+                        file_name="adventa_processed_data.csv",
+                        mime="text/csv"
+                    )
+                else:
+                    st.warning("No valid data after cleaning. Please check your data format.")
 
 # ========== PREDICT SECTION ==========
 st.markdown('<div id="predict-section"></div>', unsafe_allow_html=True)
@@ -802,18 +808,18 @@ with st.expander("🎯 Predict Campaign Performance", expanded=False):
             y_actual_full = st.session_state["y_actual_full"]
         
         if "date" in df.columns and len(df) > 0:
-            # Ensure dates are properly formatted for the chart
+            # Ensure dates are properly parsed for display
             try:
+                date_col = pd.to_datetime(df['date'], errors='coerce')
                 pred_df = pd.DataFrame({
-                    'date': pd.to_datetime(df['date']),
+                    'date': date_col,
                     'Actual Revenue': y_actual_full,
                     'Predicted Revenue': y_predicted_full
                 })
-                # Drop any rows with NaT dates
                 pred_df = pred_df.dropna(subset=['date'])
                 pred_df = pred_df.sort_values('date')
                 
-                if not pred_df.empty:
+                if len(pred_df) > 0:
                     max_date = pred_df['date'].max()
                     min_date = pred_df['date'].min()
                     
@@ -829,7 +835,7 @@ with st.expander("🎯 Predict Campaign Performance", expanded=False):
                     
                     filtered_df = pred_df[(pred_df['date'] >= pd.to_datetime(start_date)) & (pred_df['date'] <= pd.to_datetime(end_date))]
                     
-                    if not filtered_df.empty:
+                    if len(filtered_df) > 0:
                         fig = go.Figure()
                         fig.add_trace(go.Scatter(x=filtered_df['date'], y=filtered_df['Actual Revenue'],
                                                 mode='lines', name='Actual Revenue',
@@ -863,11 +869,11 @@ with st.expander("🎯 Predict Campaign Performance", expanded=False):
                                 st.metric("MAE (Selected Range)", f"${mae_range:,.0f}")
                                 st.caption("Average prediction error in dollars (lower is better)")
                     else:
-                        st.warning("No data available for the selected date range.")
+                        st.warning("No data available in the selected date range.")
                 else:
-                    st.warning("No valid date data available after processing.")
+                    st.warning("No valid dates found in the dataset.")
             except Exception as e:
-                st.warning(f"Could not display time series chart: {str(e)}")
+                st.warning(f"Date parsing issue: {str(e)}. Please ensure dates are in DD/MM/YYYY format.")
         else:
             st.warning("Date column not found or empty in dataset.")
         
@@ -1056,7 +1062,8 @@ with st.expander("📊 Campaign Analytics Dashboard", expanded=False):
             if "date" in df.columns:
                 st.markdown("### Revenue vs Ad Spend Over Time")
                 try:
-                    df['date'] = pd.to_datetime(df['date'])
+                    df['date'] = pd.to_datetime(df['date'], errors='coerce')
+                    df = df.dropna(subset=['date'])
                     df_time = df.copy()
                     df_time['total_spend'] = df_time[['fb_spend', 'instagram_spend', 'tiktok_spend']].sum(axis=1)
                     df_time = df_time.sort_values('date')
@@ -1083,28 +1090,25 @@ with st.expander("📊 Campaign Analytics Dashboard", expanded=False):
                     df_time['spend_exceeds_revenue'] = df_time['total_spend'] > df_time['total_revenue']
                     if df_time['spend_exceeds_revenue'].any():
                         exceed_df = df_time[df_time['spend_exceeds_revenue']]
-                        # Safely get dates, handling any NaT values
-                        exceed_dates = exceed_df['date'].dropna()
-                        if not exceed_dates.empty:
-                            exceed_dates_list = exceed_dates.dt.strftime('%Y-%m-%d').tolist()
-                            exceed_dates_str = ', '.join(exceed_dates_list[:5])  # Show first 5 dates
-                            if len(exceed_dates_list) > 5:
-                                exceed_dates_str += f" and {len(exceed_dates_list) - 5} more..."
-                            st.warning(f"⚠️ Ad spend exceeded revenue on: {exceed_dates_str}")
-                        else:
-                            st.success("✅ Ad spend never exceeded revenue during this period!")
+                        exceed_dates_list = exceed_df['date'].dt.strftime('%Y-%m-%d').tolist()
+                        exceed_dates_str = ', '.join(exceed_dates_list[:10])  # Show first 10 dates
+                        if len(exceed_dates_list) > 10:
+                            exceed_dates_str += f" and {len(exceed_dates_list) - 10} more..."
+                        st.warning(f"⚠️ Ad spend exceeded revenue on: {exceed_dates_str}")
                     else:
                         st.success("✅ Ad spend never exceeded revenue during this period!")
                 except Exception as e:
-                    st.warning(f"Could not display time series: {str(e)}")
+                    st.warning(f"Error processing time series: {str(e)}")
             else:
                 st.info("Date column not found for time series analysis.")
         
         with tab3:
             st.markdown("### Channel Performance Heatmap")
             if "category" in df.columns:
-                if "date" in df.columns:
-                    try:
+                try:
+                    if "date" in df.columns:
+                        df['date'] = pd.to_datetime(df['date'], errors='coerce')
+                        df = df.dropna(subset=['date'])
                         min_date = df["date"].min().date()
                         max_date = df["date"].max().date()
                         
@@ -1115,31 +1119,31 @@ with st.expander("📊 Campaign Analytics Dashboard", expanded=False):
                             end_date = st.date_input("End Date", value=max_date, min_value=min_date, max_value=max_date, key="heatmap_end")
                         
                         filtered_df = df[(df["date"] >= pd.to_datetime(start_date)) & (df["date"] <= pd.to_datetime(end_date))]
-                    except:
+                    else:
                         filtered_df = df.copy()
-                else:
-                    filtered_df = df.copy()
-                
-                heatmap_data = filtered_df.groupby("category")[["fb_spend","instagram_spend","tiktok_spend"]].sum()
-                
-                if not heatmap_data.empty:
-                    heatmap_data_display = heatmap_data.rename(columns={
-                        'fb_spend': 'Facebook Spend',
-                        'instagram_spend': 'Instagram Spend',
-                        'tiktok_spend': 'TikTok Spend'
-                    })
-                    fig = px.imshow(heatmap_data_display.T, 
-                                   text_auto='.0f',
-                                   aspect="auto",
-                                   color_continuous_scale='Blues',
-                                   title="Ad Spend Heatmap")
-                    fig.update_layout(height=400,
-                                     xaxis_title="Category",
-                                     yaxis_title="Channel",
-                                     font=dict(color='black', size=12))
-                    st.plotly_chart(fig, use_container_width=True)
-                else:
-                    st.info("No data available for selected date range")
+                    
+                    heatmap_data = filtered_df.groupby("category")[["fb_spend","instagram_spend","tiktok_spend"]].sum()
+                    
+                    if not heatmap_data.empty:
+                        heatmap_data_display = heatmap_data.rename(columns={
+                            'fb_spend': 'Facebook Spend',
+                            'instagram_spend': 'Instagram Spend',
+                            'tiktok_spend': 'TikTok Spend'
+                        })
+                        fig = px.imshow(heatmap_data_display.T, 
+                                       text_auto='.0f',
+                                       aspect="auto",
+                                       color_continuous_scale='Blues',
+                                       title="Ad Spend Heatmap")
+                        fig.update_layout(height=400,
+                                         xaxis_title="Category",
+                                         yaxis_title="Channel",
+                                         font=dict(color='black', size=12))
+                        st.plotly_chart(fig, use_container_width=True)
+                    else:
+                        st.info("No data available for selected date range")
+                except Exception as e:
+                    st.warning(f"Error creating heatmap: {str(e)}")
             else:
                 st.info("Category column not found for heatmap.")
         
