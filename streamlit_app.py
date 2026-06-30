@@ -667,7 +667,6 @@ with st.expander("🔮 Generate Synthetic Data", expanded=False):
         
         st.info("💡 Download this synthetic data and upload it below to test Adventa's prediction capabilities!")
 
-st.markdown("---")
 
 # File Upload Section
 uploaded_file = st.file_uploader(
@@ -746,6 +745,8 @@ if uploaded_file is not None:
                     )
                 else:
                     st.warning("No valid data after cleaning. Please check your data format.")
+
+st.markdown("---")
 
 # ========== PREDICT SECTION ==========
 st.markdown('<div id="predict-section"></div>', unsafe_allow_html=True)
