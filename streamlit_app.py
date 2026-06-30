@@ -136,8 +136,9 @@ def predict_revenue_lasso(df, model, fb_spend, instagram_spend, tiktok_spend, ca
     return predicted_revenue
 
 def generate_synthetic_data(num_rows=100, start_date="2024-01-01"):
-    """Generate synthetic campaign data"""
+    """Generate synthetic campaign data with realistic patterns"""
     categories = ['Home', 'Electronics', 'Clothing', 'Beauty']
+    category_weights = [0.25, 0.25, 0.25, 0.25]  # Equal distribution
     
     # Create date range (weekly data)
     start = datetime.strptime(start_date, "%Y-%m-%d")
@@ -146,34 +147,59 @@ def generate_synthetic_data(num_rows=100, start_date="2024-01-01"):
     data = {
         'date': dates,
         'campaign_ID': [random.randint(1000, 9999) for _ in range(num_rows)],
-        'category': [random.choice(categories) for _ in range(num_rows)],
+        'category': [random.choices(categories, weights=category_weights)[0] for _ in range(num_rows)],
         'fb_spend': [],
         'instagram_spend': [],
         'tiktok_spend': [],
         'total_revenue': []
     }
     
-    # Generate realistic spend and revenue patterns
+    # Generate realistic spend and revenue patterns with seasonal trends
     for i in range(num_rows):
-        # Base spend with some randomness and trends
-        base_spend = 1000 + (i % 10) * 200 + random.randint(-500, 500)
-        fb = max(0, base_spend * random.uniform(0.3, 1.2))
-        insta = max(0, base_spend * random.uniform(0.3, 1.2))
-        tiktok = max(0, base_spend * random.uniform(0.3, 1.2))
+        # Create seasonal trend (sinusoidal pattern)
+        seasonal_factor = 1 + 0.3 * np.sin(2 * np.pi * i / 52)  # Annual cycle
+        
+        # Base spend with trend and randomness
+        trend = 1 + 0.001 * i  # Slight upward trend
+        base_spend = 1500 * trend * seasonal_factor + random.uniform(-300, 300)
+        base_spend = max(500, base_spend)
+        
+        # Category-specific adjustments
+        category = data['category'][i]
+        if category == 'Electronics':
+            base_spend *= random.uniform(1.0, 1.3)
+        elif category == 'Beauty':
+            base_spend *= random.uniform(0.9, 1.2)
+        elif category == 'Clothing':
+            base_spend *= random.uniform(0.8, 1.1)
+        
+        # Allocate spend across channels with realistic patterns
+        fb_ratio = random.uniform(0.2, 0.5)
+        insta_ratio = random.uniform(0.2, 0.5)
+        tiktok_ratio = 1 - fb_ratio - insta_ratio
+        tiktok_ratio = max(0.1, tiktok_ratio)  # Ensure TikTok gets at least 10%
+        
+        fb = base_spend * fb_ratio
+        insta = base_spend * insta_ratio
+        tiktok = base_spend * tiktok_ratio
         
         data['fb_spend'].append(round(fb, 2))
         data['instagram_spend'].append(round(insta, 2))
         data['tiktok_spend'].append(round(tiktok, 2))
         
-        # Revenue is influenced by spend with some randomness
+        # Revenue influenced by spend with realistic ROI
         total_spend = fb + insta + tiktok
-        revenue_multiplier = random.uniform(1.5, 3.0)
-        revenue = total_spend * revenue_multiplier + random.uniform(-500, 500)
-        data['total_revenue'].append(round(max(0, revenue), 2))
+        roi_multiplier = random.uniform(1.8, 3.2)  # ROI between 80% and 220%
+        revenue = total_spend * roi_multiplier + random.uniform(-500, 800)
+        revenue = max(0, revenue)
+        
+        # Add some noise to make it realistic
+        if random.random() < 0.1:  # 10% chance of outlier
+            revenue *= random.uniform(0.7, 1.3)
+        
+        data['total_revenue'].append(round(revenue, 2))
     
     df = pd.DataFrame(data)
-    
-    # Ensure date format is consistent
     df['date'] = pd.to_datetime(df['date'])
     
     return df
@@ -633,24 +659,23 @@ with st.expander("📊 Generate Synthetic Data", expanded=True):
                 use_container_width=True
             )
             
-            st.info("💡 This synthetic data is now ready to be used for analysis. Click 'Use Synthetic Data' below to process it, or download and save it locally.")
+            st.info("💡 This synthetic data is now ready to be used for analysis. Go to the 'Data Import' section to upload and process it, or click the download button above to save it locally.")
 
 # ========== DATA IMPORT SECTION ==========
 st.markdown('<div id="data-import"></div>', unsafe_allow_html=True)
 st.markdown("## 📁 Data Import")
 st.markdown("Upload your campaign data to get started")
 
-# Option to use synthetic data directly - FIXED
+# Option to use synthetic data directly
 if "synthetic_df" in st.session_state:
     col_import1, col_import2 = st.columns([2, 1])
     with col_import1:
-        st.info(f"💡 Synthetic data is available! ({len(st.session_state['synthetic_df'])} records). You can either upload your own CSV or use the generated data.")
+        st.info("💡 Synthetic data is available! You can either upload your own CSV or use the generated data.")
     with col_import2:
-        use_synth = st.button("🔄 Use Synthetic Data", use_container_width=True, key="use_synth_btn")
-        
-        if use_synth:
+        if st.button("🔄 Use Synthetic Data", use_container_width=True):
+            synthetic_df = st.session_state["synthetic_df"]
+            
             with st.spinner("Processing synthetic data and training AI model..."):
-                synthetic_df = st.session_state["synthetic_df"]
                 cleaned_df = clean_ad_data(synthetic_df)
                 st.session_state["cleaned_df"] = cleaned_df
                 model, error, r2, mae = train_prediction_model(cleaned_df)
@@ -671,8 +696,8 @@ if "synthetic_df" in st.session_state:
                     st.error(f"Model training failed: {error}")
                     st.session_state["model_type"] = "none"
             
-            # Force rerun to update the UI with the trained model
-            st.rerun()
+            # Force a rerun to update the UI state
+            st.experimental_rerun()
 
 uploaded_file = st.file_uploader(
     "Choose CSV file",
@@ -690,65 +715,63 @@ if uploaded_file is not None:
     with st.expander("🧹 Data Processing & Model Training", expanded=False):
         clean_button = st.button("🚀 Process Data & Train Model", use_container_width=True)
         
-        if clean_button:
-            with st.spinner("Processing data and training AI model..."):
-                cleaned_df = clean_ad_data(raw_df)
-                st.session_state["cleaned_df"] = cleaned_df
-                model, error, r2, mae = train_prediction_model(cleaned_df)
-                
-                if model:
-                    st.session_state["trained_model"] = model
-                    st.session_state["model_type"] = "lasso"
-                    st.success("✅ Dataset processed and AI model trained successfully!")
+        if clean_button or "cleaned_df" in st.session_state:
+            if clean_button:
+                with st.spinner("Processing data and training AI model..."):
+                    cleaned_df = clean_ad_data(raw_df)
+                    st.session_state["cleaned_df"] = cleaned_df
+                    model, error, r2, mae = train_prediction_model(cleaned_df)
                     
-                    if r2 >= 0.9:
-                        st.balloons()
-                        st.success("🎯 Excellent model! R² > 0.9 - Very strong predictive power")
-                    elif r2 >= 0.7:
-                        st.info("👍 Good model - Ready for predictions")
+                    if model:
+                        st.session_state["trained_model"] = model
+                        st.session_state["model_type"] = "lasso"
+                        st.success("✅ Dataset processed and AI model trained successfully!")
+                        
+                        if r2 >= 0.9:
+                            st.balloons()
+                            st.success("🎯 Excellent model! R² > 0.9 - Very strong predictive power")
+                        elif r2 >= 0.7:
+                            st.info("👍 Good model - Ready for predictions")
+                        else:
+                            st.warning("⚠️ Model could be improved - Consider adding more features or data")
                     else:
-                        st.warning("⚠️ Model could be improved - Consider adding more features or data")
-                else:
-                    st.error(f"Model training failed: {error}")
-                    st.session_state["model_type"] = "none")
+                        st.error(f"Model training failed: {error}")
+                        st.session_state["model_type"] = "none"
             
-            st.rerun()
-
-# Show cleaned data if it exists
-if "cleaned_df" in st.session_state:
-    cleaned_df = st.session_state["cleaned_df"]
-    
-    col_metric1, col_metric2, col_metric3, col_metric4 = st.columns(4)
-    with col_metric1:
-        st.metric("Total Rows", len(cleaned_df))
-    with col_metric2:
-        st.metric("Total Columns", len(cleaned_df.columns))
-    with col_metric3:
-        if "total_revenue" in cleaned_df.columns:
-            st.metric("Total Revenue", f"${cleaned_df['total_revenue'].sum():,.0f}")
-    with col_metric4:
-        if "trained_model" in st.session_state:
-            st.metric("Model R²", f"{st.session_state.get('r2_score', 0):.3f}")
-    
-    st.subheader("Cleaned Data Preview")
-    st.dataframe(cleaned_df.head(10), use_container_width=True)
-    
-    if 'category' in cleaned_df.columns:
-        st.subheader("Category Distribution")
-        category_counts = cleaned_df['category'].value_counts()
-        fig = px.bar(x=category_counts.values, y=category_counts.index, 
-                     orientation='h', color=category_counts.values,
-                     color_continuous_scale='Blues')
-        fig.update_layout(height=300, margin=dict(l=0, r=0, t=0, b=0))
-        st.plotly_chart(fig, use_container_width=True)
-    
-    csv = cleaned_df.to_csv(index=False).encode("utf-8")
-    st.download_button(
-        label="📥 Download Processed Dataset",
-        data=csv,
-        file_name="adventa_processed_data.csv",
-        mime="text/csv"
-    )
+            if "cleaned_df" in st.session_state:
+                cleaned_df = st.session_state["cleaned_df"]
+                
+                col_metric1, col_metric2, col_metric3, col_metric4 = st.columns(4)
+                with col_metric1:
+                    st.metric("Total Rows", len(cleaned_df))
+                with col_metric2:
+                    st.metric("Total Columns", len(cleaned_df.columns))
+                with col_metric3:
+                    if "total_revenue" in cleaned_df.columns:
+                        st.metric("Total Revenue", f"${cleaned_df['total_revenue'].sum():,.0f}")
+                with col_metric4:
+                    if "trained_model" in st.session_state:
+                        st.metric("Model R²", f"{st.session_state.get('r2_score', 0):.3f}")
+                
+                st.subheader("Cleaned Data Preview")
+                st.dataframe(cleaned_df.head(10), use_container_width=True)
+                
+                if 'category' in cleaned_df.columns:
+                    st.subheader("Category Distribution")
+                    category_counts = cleaned_df['category'].value_counts()
+                    fig = px.bar(x=category_counts.values, y=category_counts.index, 
+                                 orientation='h', color=category_counts.values,
+                                 color_continuous_scale='Blues')
+                    fig.update_layout(height=300, margin=dict(l=0, r=0, t=0, b=0))
+                    st.plotly_chart(fig, use_container_width=True)
+                
+                csv = cleaned_df.to_csv(index=False).encode("utf-8")
+                st.download_button(
+                    label="📥 Download Processed Dataset",
+                    data=csv,
+                    file_name="adventa_processed_data.csv",
+                    mime="text/csv"
+                )
 
 # ========== PREDICT SECTION ==========
 st.markdown('<div id="predict-section"></div>', unsafe_allow_html=True)
@@ -804,8 +827,7 @@ with st.expander("🎯 Predict Campaign Performance", expanded=False):
             y_predicted_full = model.predict(X_full)
             
             st.session_state["y_predicted_full"] = y_predicted_full
-            st.session_state["y_actual_full"] = y_actual_full
-            st.session_state["df_analysis"] = df_temp
+            st.session_state["y_actual_full"] = y_actual_full            st.session_state["df_analysis"] = df_temp
         else:
             y_predicted_full = st.session_state["y_predicted_full"]
             y_actual_full = st.session_state["y_actual_full"]
