@@ -633,23 +633,24 @@ with st.expander("📊 Generate Synthetic Data", expanded=True):
                 use_container_width=True
             )
             
-            st.info("💡 This synthetic data is now ready to be used for analysis. Go to the 'Data Import' section to upload and process it, or click the download button above to save it locally.")
+            st.info("💡 This synthetic data is now ready to be used for analysis. Click 'Use Synthetic Data' below to process it, or download and save it locally.")
 
 # ========== DATA IMPORT SECTION ==========
 st.markdown('<div id="data-import"></div>', unsafe_allow_html=True)
 st.markdown("## 📁 Data Import")
 st.markdown("Upload your campaign data to get started")
 
-# Option to use synthetic data directly
+# Option to use synthetic data directly - FIXED
 if "synthetic_df" in st.session_state:
     col_import1, col_import2 = st.columns([2, 1])
     with col_import1:
-        st.info("💡 Synthetic data is available! You can either upload your own CSV or use the generated data.")
+        st.info(f"💡 Synthetic data is available! ({len(st.session_state['synthetic_df'])} records). You can either upload your own CSV or use the generated data.")
     with col_import2:
-        if st.button("🔄 Use Synthetic Data", use_container_width=True):
-            synthetic_df = st.session_state["synthetic_df"]
-            
+        use_synth = st.button("🔄 Use Synthetic Data", use_container_width=True, key="use_synth_btn")
+        
+        if use_synth:
             with st.spinner("Processing synthetic data and training AI model..."):
+                synthetic_df = st.session_state["synthetic_df"]
                 cleaned_df = clean_ad_data(synthetic_df)
                 st.session_state["cleaned_df"] = cleaned_df
                 model, error, r2, mae = train_prediction_model(cleaned_df)
@@ -670,6 +671,7 @@ if "synthetic_df" in st.session_state:
                     st.error(f"Model training failed: {error}")
                     st.session_state["model_type"] = "none"
             
+            # Force rerun to update the UI with the trained model
             st.rerun()
 
 uploaded_file = st.file_uploader(
@@ -688,63 +690,65 @@ if uploaded_file is not None:
     with st.expander("🧹 Data Processing & Model Training", expanded=False):
         clean_button = st.button("🚀 Process Data & Train Model", use_container_width=True)
         
-        if clean_button or "cleaned_df" in st.session_state:
-            if clean_button:
-                with st.spinner("Processing data and training AI model..."):
-                    cleaned_df = clean_ad_data(raw_df)
-                    st.session_state["cleaned_df"] = cleaned_df
-                    model, error, r2, mae = train_prediction_model(cleaned_df)
+        if clean_button:
+            with st.spinner("Processing data and training AI model..."):
+                cleaned_df = clean_ad_data(raw_df)
+                st.session_state["cleaned_df"] = cleaned_df
+                model, error, r2, mae = train_prediction_model(cleaned_df)
+                
+                if model:
+                    st.session_state["trained_model"] = model
+                    st.session_state["model_type"] = "lasso"
+                    st.success("✅ Dataset processed and AI model trained successfully!")
                     
-                    if model:
-                        st.session_state["trained_model"] = model
-                        st.session_state["model_type"] = "lasso"
-                        st.success("✅ Dataset processed and AI model trained successfully!")
-                        
-                        if r2 >= 0.9:
-                            st.balloons()
-                            st.success("🎯 Excellent model! R² > 0.9 - Very strong predictive power")
-                        elif r2 >= 0.7:
-                            st.info("👍 Good model - Ready for predictions")
-                        else:
-                            st.warning("⚠️ Model could be improved - Consider adding more features or data")
+                    if r2 >= 0.9:
+                        st.balloons()
+                        st.success("🎯 Excellent model! R² > 0.9 - Very strong predictive power")
+                    elif r2 >= 0.7:
+                        st.info("👍 Good model - Ready for predictions")
                     else:
-                        st.error(f"Model training failed: {error}")
-                        st.session_state["model_type"] = "none"
+                        st.warning("⚠️ Model could be improved - Consider adding more features or data")
+                else:
+                    st.error(f"Model training failed: {error}")
+                    st.session_state["model_type"] = "none")
             
-            if "cleaned_df" in st.session_state:
-                cleaned_df = st.session_state["cleaned_df"]
-                
-                col_metric1, col_metric2, col_metric3, col_metric4 = st.columns(4)
-                with col_metric1:
-                    st.metric("Total Rows", len(cleaned_df))
-                with col_metric2:
-                    st.metric("Total Columns", len(cleaned_df.columns))
-                with col_metric3:
-                    if "total_revenue" in cleaned_df.columns:
-                        st.metric("Total Revenue", f"${cleaned_df['total_revenue'].sum():,.0f}")
-                with col_metric4:
-                    if "trained_model" in st.session_state:
-                        st.metric("Model R²", f"{st.session_state.get('r2_score', 0):.3f}")
-                
-                st.subheader("Cleaned Data Preview")
-                st.dataframe(cleaned_df.head(10), use_container_width=True)
-                
-                if 'category' in cleaned_df.columns:
-                    st.subheader("Category Distribution")
-                    category_counts = cleaned_df['category'].value_counts()
-                    fig = px.bar(x=category_counts.values, y=category_counts.index, 
-                                 orientation='h', color=category_counts.values,
-                                 color_continuous_scale='Blues')
-                    fig.update_layout(height=300, margin=dict(l=0, r=0, t=0, b=0))
-                    st.plotly_chart(fig, use_container_width=True)
-                
-                csv = cleaned_df.to_csv(index=False).encode("utf-8")
-                st.download_button(
-                    label="📥 Download Processed Dataset",
-                    data=csv,
-                    file_name="adventa_processed_data.csv",
-                    mime="text/csv"
-                )
+            st.rerun()
+
+# Show cleaned data if it exists
+if "cleaned_df" in st.session_state:
+    cleaned_df = st.session_state["cleaned_df"]
+    
+    col_metric1, col_metric2, col_metric3, col_metric4 = st.columns(4)
+    with col_metric1:
+        st.metric("Total Rows", len(cleaned_df))
+    with col_metric2:
+        st.metric("Total Columns", len(cleaned_df.columns))
+    with col_metric3:
+        if "total_revenue" in cleaned_df.columns:
+            st.metric("Total Revenue", f"${cleaned_df['total_revenue'].sum():,.0f}")
+    with col_metric4:
+        if "trained_model" in st.session_state:
+            st.metric("Model R²", f"{st.session_state.get('r2_score', 0):.3f}")
+    
+    st.subheader("Cleaned Data Preview")
+    st.dataframe(cleaned_df.head(10), use_container_width=True)
+    
+    if 'category' in cleaned_df.columns:
+        st.subheader("Category Distribution")
+        category_counts = cleaned_df['category'].value_counts()
+        fig = px.bar(x=category_counts.values, y=category_counts.index, 
+                     orientation='h', color=category_counts.values,
+                     color_continuous_scale='Blues')
+        fig.update_layout(height=300, margin=dict(l=0, r=0, t=0, b=0))
+        st.plotly_chart(fig, use_container_width=True)
+    
+    csv = cleaned_df.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        label="📥 Download Processed Dataset",
+        data=csv,
+        file_name="adventa_processed_data.csv",
+        mime="text/csv"
+    )
 
 # ========== PREDICT SECTION ==========
 st.markdown('<div id="predict-section"></div>', unsafe_allow_html=True)
