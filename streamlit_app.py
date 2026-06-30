@@ -827,7 +827,8 @@ with st.expander("🎯 Predict Campaign Performance", expanded=False):
             y_predicted_full = model.predict(X_full)
             
             st.session_state["y_predicted_full"] = y_predicted_full
-            st.session_state["y_actual_full"] = y_actual_full            st.session_state["df_analysis"] = df_temp
+            st.session_state["y_actual_full"] = y_actual_full
+            st.session_state["df_analysis"] = df_temp
         else:
             y_predicted_full = st.session_state["y_predicted_full"]
             y_actual_full = st.session_state["y_actual_full"]
