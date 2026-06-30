@@ -74,24 +74,14 @@ def train_prediction_model(df):
         X = df_model[feature_cols]
         y = df_model['total_revenue']
         
-        # Use a larger test size for better evaluation
-        test_size = min(0.2, 5/len(df)) if len(df) < 25 else 0.2
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, shuffle=False)
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
         
-        # Adjust alpha based on data size
-        alpha = max(0.1, 1.0 - (len(df) / 1000))  # Lower alpha for more data
-        model = Lasso(alpha=alpha, random_state=42)
+        model = Lasso(alpha=1.0, random_state=42)
         model.fit(X_train, y_train)
         
         y_pred = model.predict(X_test)
-        
-        # Handle cases where test set is too small
-        if len(y_test) > 1:
-            r2 = r2_score(y_test, y_pred)
-            mae = mean_absolute_error(y_test, y_pred)
-        else:
-            r2 = 0.5  # Default value for very small datasets
-            mae = np.mean(np.abs(y_test - y_pred)) if len(y_test) > 0 else 0
+        r2 = r2_score(y_test, y_pred)
+        mae = mean_absolute_error(y_test, y_pred)
         
         st.session_state["r2_score"] = r2
         st.session_state["mae"] = mae
@@ -145,122 +135,96 @@ def predict_revenue_lasso(df, model, fb_spend, instagram_spend, tiktok_spend, ca
     
     return predicted_revenue
 
-def generate_synthetic_data(num_rows=500, start_date="2024-01-01"):
+def generate_synthetic_data(n_records=500):
     """Generate synthetic campaign data with strong predictive patterns"""
-    categories = ['Home', 'Electronics', 'Clothing', 'Beauty']
-    category_weights = [0.25, 0.25, 0.25, 0.25]
+    np.random.seed(42)
+    random.seed(42)
     
-    # Define channel effectiveness weights (these will create a strong predictive pattern)
-    channel_weights = {
-        'fb': 2.5,
-        'instagram': 2.8,
-        'tiktok': 2.2
-    }
+    categories = ['Home', 'Electronics', 'Beauty', 'Clothing']
     
-    # Category multipliers for revenue
+    # Generate dates (weekly data starting from Jan 1, 2024)
+    start_date = datetime(2024, 1, 1)
+    dates = [start_date + timedelta(days=7*i) for i in range(n_records)]
+    
+    # Generate campaign IDs
+    campaign_ids = np.random.randint(1000, 2000, n_records)
+    
+    # Generate categories with some probability distribution
+    categories_choice = np.random.choice(categories, n_records, p=[0.30, 0.25, 0.25, 0.20])
+    
+    # Generate ad spend with realistic patterns
+    # Facebook spend: 500-5000 with some seasonality
+    fb_spend = np.random.gamma(shape=2, scale=1000, size=n_records) + 500
+    fb_spend = np.clip(fb_spend, 500, 5000)
+    
+    # Instagram spend: 500-4000
+    insta_spend = np.random.gamma(shape=2, scale=800, size=n_records) + 500
+    insta_spend = np.clip(insta_spend, 500, 4000)
+    
+    # TikTok spend: 500-3500
+    tiktok_spend = np.random.gamma(shape=2, scale=700, size=n_records) + 500
+    tiktok_spend = np.clip(tiktok_spend, 500, 3500)
+    
+    # Create revenue with strong predictive patterns
+    # Base revenue from ad spend (with diminishing returns)
+    base_revenue = (
+        0.8 * fb_spend + 
+        1.0 * insta_spend + 
+        0.9 * tiktok_spend +
+        0.3 * (fb_spend * insta_spend) / 1000  # interaction effect
+    )
+    
+    # Category multipliers (different ROIs per category)
     category_multipliers = {
-        'Home': 1.0,
-        'Electronics': 1.3,
-        'Clothing': 0.9,
-        'Beauty': 1.1
+        'Home': 1.1,
+        'Electronics': 1.0,
+        'Beauty': 1.15,
+        'Clothing': 0.95
     }
     
-    start = datetime.strptime(start_date, "%Y-%m-%d")
-    dates = [start + timedelta(days=7*i) for i in range(num_rows)]
+    # Apply category multipliers
+    category_effects = np.array([category_multipliers[cat] for cat in categories_choice])
+    base_revenue = base_revenue * category_effects
     
-    data = {
+    # Add seasonality (quarterly patterns)
+    seasonality = 1 + 0.1 * np.sin(np.array([i for i in range(n_records)]) * 2 * np.pi / 52)  # 52 weeks cycle
+    base_revenue = base_revenue * seasonality
+    
+    # Add adstock effect (carryover from previous periods)
+    adstock_effect = np.zeros(n_records)
+    for i in range(1, n_records):
+        adstock_effect[i] = 0.15 * (fb_spend[i-1] + insta_spend[i-1] + tiktok_spend[i-1])
+    
+    # Add some random noise but keep R² high
+    noise = np.random.normal(0, 0.05 * base_revenue, n_records)  # 5% noise
+    noise += np.random.normal(0, 100, n_records)  # small constant noise
+    
+    # Calculate final revenue
+    total_revenue = base_revenue + adstock_effect + noise
+    total_revenue = np.maximum(total_revenue, 3000)  # Minimum revenue
+    
+    # Create dataframe
+    df = pd.DataFrame({
         'date': dates,
-        'campaign_ID': [random.randint(1000, 9999) for _ in range(num_rows)],
-        'category': [random.choices(categories, weights=category_weights)[0] for _ in range(num_rows)],
-        'fb_spend': [],
-        'instagram_spend': [],
-        'tiktok_spend': [],
-        'total_revenue': []
-    }
-    
-    # Generate data with strong, predictable patterns
-    for i in range(num_rows):
-        # Base spend with mild variation
-        base_spend = 1500 + (i * 5) + random.uniform(-200, 200)
-        base_spend = max(500, base_spend)
-        
-        # Category-specific adjustments
-        category = data['category'][i]
-        if category == 'Electronics':
-            base_spend *= random.uniform(1.1, 1.4)
-        elif category == 'Beauty':
-            base_spend *= random.uniform(0.95, 1.15)
-        elif category == 'Clothing':
-            base_spend *= random.uniform(0.85, 1.05)
-        
-        # Allocate spend across channels with some randomness
-        fb_ratio = random.uniform(0.25, 0.45)
-        insta_ratio = random.uniform(0.25, 0.45)
-        tiktok_ratio = 1 - fb_ratio - insta_ratio
-        tiktok_ratio = max(0.15, min(0.40, tiktok_ratio))
-        
-        fb = base_spend * fb_ratio
-        insta = base_spend * insta_ratio
-        tiktok = base_spend * tiktok_ratio
-        
-        data['fb_spend'].append(round(fb, 2))
-        data['instagram_spend'].append(round(insta, 2))
-        data['tiktok_spend'].append(round(tiktok, 2))
-        
-        # Calculate revenue with strong, predictable relationship
-        # Each channel has a specific effectiveness weight
-        total_spend = fb + insta + tiktok
-        
-        # Base revenue from spend with channel weights
-        weighted_revenue = (
-            fb * channel_weights['fb'] +
-            insta * channel_weights['instagram'] +
-            tiktok * channel_weights['tiktok']
-        )
-        
-        # Apply category multiplier
-        category_mult = category_multipliers[category]
-        
-        # Add some randomness but keep it tight for high R²
-        noise = random.uniform(-0.05, 0.05) * weighted_revenue  # Only 5% noise
-        
-        revenue = (weighted_revenue * category_mult) + noise
-        revenue = max(100, revenue)  # Minimum revenue
-        
-        # Add small seasonal trend
-        if i % 4 == 0:  # Quarterly bump
-            revenue *= 1.1
-        
-        data['total_revenue'].append(round(revenue, 2))
-    
-    df = pd.DataFrame(data)
-    df['date'] = pd.to_datetime(df['date'])
-    
-    # Calculate the actual R² to ensure it's high
-    # We'll use a simple linear model to verify
-    from sklearn.linear_model import LinearRegression
-    X_test = df[['fb_spend', 'instagram_spend', 'tiktok_spend']]
-    y_test = df['total_revenue']
-    lr = LinearRegression()
-    lr.fit(X_test, y_test)
-    r2_test = lr.score(X_test, y_test)
-    
-    # If R² is not high enough, we need to add more signal
-    if r2_test < 0.85:
-        # Add a stronger signal component
-        signal = (df['fb_spend'] * 2.5 + df['instagram_spend'] * 2.8 + df['tiktok_spend'] * 2.2)
-        df['total_revenue'] = signal + df['total_revenue'] * 0.2
-        df['total_revenue'] = df['total_revenue'].round(2)
+        'campaign_ID': campaign_ids,
+        'category': categories_choice,
+        'fb_spend': np.round(fb_spend, 2),
+        'instagram_spend': np.round(insta_spend, 2),
+        'tiktok_spend': np.round(tiktok_spend, 2),
+        'total_revenue': np.round(total_revenue, 2)
+    })
     
     return df
 
 # ========== PROFESSIONAL LIGHT THEME CSS ==========
 st.markdown("""
 <style>
+    /* Main background - Light gradient */
     .stApp {
         background: linear-gradient(135deg, #f0f4f8 0%, #e2e8f0 100%);
     }
     
+    /* Card styling */
     .css-1r6slb0, .css-1v3fvcr {
         background-color: #ffffff;
         border-radius: 16px;
@@ -268,6 +232,7 @@ st.markdown("""
         padding: 20px;
     }
     
+    /* Metric cards */
     div[data-testid="stMetricValue"] {
         font-size: 28px;
         font-weight: 700;
@@ -280,6 +245,7 @@ st.markdown("""
         color: #64748b;
     }
     
+    /* Headers */
     h1 {
         color: #0f172a;
         font-weight: 800;
@@ -306,10 +272,12 @@ st.markdown("""
         margin-top: 0.75rem;
     }
     
+    /* Smooth scrolling */
     html {
         scroll-behavior: smooth;
     }
     
+    /* Button styling */
     .stButton > button {
         background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
         color: white;
@@ -326,6 +294,7 @@ st.markdown("""
         box-shadow: 0 6px 12px rgba(59,130,246,0.2);
     }
     
+    /* Expander styling */
     .streamlit-expanderHeader {
         background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
         color: white;
@@ -341,6 +310,7 @@ st.markdown("""
         padding: 20px;
     }
     
+    /* Tab styling */
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px;
         background-color: #f8fafc;
@@ -363,31 +333,37 @@ st.markdown("""
         border: none;
     }
     
+    /* Alert messages */
     .stAlert {
         border-radius: 12px;
         border-left: 4px solid;
     }
     
+    /* Success message */
     div[data-testid="stSuccess"] {
         background-color: #f0fdf4;
         border-left-color: #22c55e;
     }
     
+    /* Info message */
     div[data-testid="stInfo"] {
         background-color: #eff6ff;
         border-left-color: #3b82f6;
     }
     
+    /* Warning message */
     div[data-testid="stWarning"] {
         background-color: #fefce8;
         border-left-color: #eab308;
     }
     
+    /* Error message */
     div[data-testid="stError"] {
         background-color: #fef2f2;
         border-left-color: #ef4444;
     }
     
+    /* Dataframe styling */
     .dataframe {
         border-radius: 12px;
         overflow: hidden;
@@ -400,6 +376,7 @@ st.markdown("""
         padding: 12px;
     }
     
+    /* Input fields */
     .stNumberInput input, .stSelectbox select, .stDateInput input {
         border-radius: 10px;
         border: 1px solid #cbd5e1;
@@ -411,11 +388,13 @@ st.markdown("""
         box-shadow: 0 0 0 2px rgba(59,130,246,0.1);
     }
     
+    /* Caption text */
     .stCaption {
         color: #64748b;
         font-size: 0.875rem;
     }
     
+    /* Divider */
     hr {
         margin: 1.5rem 0;
         border: none;
@@ -423,6 +402,7 @@ st.markdown("""
         background: linear-gradient(90deg, transparent, #cbd5e1, transparent);
     }
     
+    /* Section highlight animation */
     @keyframes highlight {
         0% { background-color: rgba(59,130,246,0.2); }
         100% { background-color: transparent; }
@@ -431,20 +411,30 @@ st.markdown("""
     .section-highlight {
         animation: highlight 1.5s ease-out;
     }
-    
-    .generator-card {
-        background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
-        border-radius: 16px;
-        padding: 20px;
-        border: 2px dashed #94a3b8;
-        margin: 10px 0;
-    }
-    
-    .generator-card:hover {
-        border-color: #3b82f6;
-        background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
-    }
 </style>
+
+<script>
+    // Function to scroll to section with offset for header
+    function scrollToSection(sectionId) {
+        const element = document.getElementById(sectionId);
+        if (element) {
+            const offset = 80;
+            const elementPosition = element.getBoundingClientRect().top;
+            const offsetPosition = elementPosition + window.pageYOffset - offset;
+            
+            window.scrollTo({
+                top: offsetPosition,
+                behavior: "smooth"
+            });
+            
+            // Add highlight class
+            element.classList.add('section-highlight');
+            setTimeout(() => {
+                element.classList.remove('section-highlight');
+            }, 1500);
+        }
+    }
+</script>
 """, unsafe_allow_html=True)
 
 # ========== HEADER ==========
@@ -514,6 +504,21 @@ st.markdown("""
         border: 1px solid rgba(255,75,75,0.3);
         margin-left: 15px;
     }
+    
+    .nav-button {
+        background: transparent;
+        border: 1px solid rgba(255,255,255,0.2);
+        color: white;
+        padding: 8px 16px;
+        border-radius: 10px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+    
+    .nav-button:hover {
+        background: rgba(255,255,255,0.1);
+        border-color: rgba(255,75,75,0.5);
+    }
     </style>
     
     <div class="header-container">
@@ -542,10 +547,9 @@ st.markdown("""
 - 📊 **Real-time Analytics** with interactive visualizations
 - 💰 **Budget Optimization** recommendations
 - 🔮 **Revenue Forecasting** based on ad spend
-- 📁 **Synthetic Data Generator** - Create realistic campaign data
 
 ### How it works:
-1. Generate synthetic data or upload your campaign data (CSV format)
+1. Upload your campaign data (CSV format) OR generate synthetic data
 2. Let our tool train on your historical performance
 3. Get predictions and optimization recommendations
 """)
@@ -557,6 +561,7 @@ with st.sidebar:
     st.markdown("### 🚀 ADVENTA")
     st.markdown("---")
     
+    # Navigation buttons with HTML links for smooth scrolling
     st.markdown("""
     <div style="display: flex; flex-direction: column; gap: 8px;">
         <a href="#" style="text-decoration: none;">
@@ -567,11 +572,6 @@ with st.sidebar:
         <a href="#data-import" style="text-decoration: none;">
             <button style="width: 100%; padding: 10px; background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600;">
                 📁 Data Import
-            </button>
-        </a>
-        <a href="#generator-section" style="text-decoration: none;">
-            <button style="width: 100%; padding: 10px; background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600;">
-                🎨 Generate Data
             </button>
         </a>
         <a href="#predict-section" style="text-decoration: none;">
@@ -588,78 +588,50 @@ with st.sidebar:
     """, unsafe_allow_html=True)
     
     st.markdown("---")
-    st.caption("v1.0.0 | Analyzer")
-
-# ========== SYNTHETIC DATA GENERATOR SECTION ==========
-st.markdown('<div id="generator-section"></div>', unsafe_allow_html=True)
-st.markdown("## 🎨 Synthetic Data Generator")
-st.markdown("Generate realistic campaign data to test and explore Adventa's capabilities")
-
-with st.expander("📊 Generate Synthetic Data", expanded=True):
-    st.markdown("""
-    <div class="generator-card">
-        <p style="font-weight: 500; color: #1e293b; margin-bottom: 10px;">
-            💡 Generate 500 synthetic campaign records with strong predictive patterns
-        </p>
-        <p style="color: #64748b; font-size: 0.9rem;">
-            📅 Start Date: January 1, 2024 | 📊 Records: 500 Campaigns
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
     
-    if st.button("🎲 Generate 500 Synthetic Records", type="primary", use_container_width=True):
-        with st.spinner("Generating 500 synthetic campaign records..."):
-            synthetic_df = generate_synthetic_data(500, "2024-01-01")
-            st.session_state["synthetic_df"] = synthetic_df
-            
-            st.success("✅ Successfully generated 500 synthetic campaign records!")
-            
-            # Check the R² of the generated data
-            from sklearn.linear_model import LinearRegression
-            X_check = synthetic_df[['fb_spend', 'instagram_spend', 'tiktok_spend']]
-            y_check = synthetic_df['total_revenue']
-            lr_check = LinearRegression()
-            lr_check.fit(X_check, y_check)
-            r2_check = lr_check.score(X_check, y_check)
-            
-            col_metric1, col_metric2, col_metric3, col_metric4, col_metric5 = st.columns(5)
-            with col_metric1:
-                st.metric("📊 Total Campaigns", len(synthetic_df))
-            with col_metric2:
-                st.metric("💰 Total Ad Spend", f"${synthetic_df[['fb_spend','instagram_spend','tiktok_spend']].sum().sum():,.0f}")
-            with col_metric3:
-                st.metric("📈 Total Revenue", f"${synthetic_df['total_revenue'].sum():,.0f}")
-            with col_metric4:
-                categories_count = synthetic_df['category'].nunique()
-                st.metric("🏷️ Categories", categories_count)
-            with col_metric5:
-                st.metric("🎯 Data Quality", f"R² {r2_check:.3f}", delta="High" if r2_check > 0.85 else "Medium")
-            
-            # Raw Data Preview only
-            st.subheader("📄 Raw Data Preview")
-            st.dataframe(synthetic_df.head(10), use_container_width=True)
-            
-            # Download button
-            csv = synthetic_df.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                label="📥 Download Synthetic Data as CSV",
-                data=csv,
-                file_name=f"synthetic_campaign_data_{datetime.now().strftime('%Y%m%d')}.csv",
-                mime="text/csv",
-                use_container_width=True
-            )
-            
-            st.info("💡 Synthetic data generated! Please download the CSV file and upload it in the 'Data Import' section below to train the model.")
+    st.caption("v1.0.0 | Analyzer")
 
 # ========== DATA IMPORT SECTION ==========
 st.markdown('<div id="data-import"></div>', unsafe_allow_html=True)
 st.markdown("## 📁 Data Import")
 st.markdown("Upload your campaign data to get started")
 
-# Inform users about synthetic data if it exists
-if "synthetic_df" in st.session_state:
-    st.info("💡 You have generated synthetic data. Please download it using the button above and upload it below to train the model.")
+# Synthetic Data Generation Section
+with st.expander("🔮 Generate Synthetic Data", expanded=False):
+    st.markdown("### Generate Sample Campaign Data")
+    st.markdown("Generate 500 synthetic campaign records with strong predictive patterns (R² > 0.9)")
+    
+    col_gen1, col_gen2 = st.columns([2, 1])
+    with col_gen1:
+        n_records = st.slider("Number of Records", min_value=100, max_value=1000, value=500, step=50)
+    with col_gen2:
+        if st.button("🚀 Generate Synthetic Data", use_container_width=True):
+            with st.spinner("Generating synthetic data with strong predictive patterns..."):
+                synthetic_df = generate_synthetic_data(n_records)
+                st.session_state["synthetic_df"] = synthetic_df
+                st.success(f"✅ Generated {len(synthetic_df)} synthetic records!")
+    
+    if "synthetic_df" in st.session_state:
+        synthetic_df = st.session_state["synthetic_df"]
+        
+        st.markdown("### 📊 Synthetic Data Preview")
+        st.dataframe(synthetic_df.head(100), use_container_width=True)
+        
+        # Download button for synthetic data
+        csv = synthetic_df.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            label="📥 Download Synthetic Data (CSV)",
+            data=csv,
+            file_name="adventa_synthetic_data.csv",
+            mime="text/csv",
+            use_container_width=True
+        )
+        
+        st.info("💡 Download this synthetic data and upload it below to test Adventa's prediction capabilities!")
 
+st.markdown("---")
+
+# File Upload Section
 uploaded_file = st.file_uploader(
     "Choose CSV file",
     type=["csv"],
@@ -672,6 +644,7 @@ if uploaded_file is not None:
     with st.expander("📄 Raw Data Preview", expanded=False):
         st.dataframe(raw_df.head(), use_container_width=True)
 
+    # ---------- CLEAN DATA ----------
     with st.expander("🧹 Data Processing & Model Training", expanded=False):
         clean_button = st.button("🚀 Process Data & Train Model", use_container_width=True)
         
@@ -932,6 +905,7 @@ with st.expander("🎯 Predict Campaign Performance", expanded=False):
                 if has_category:
                     st.markdown(f"**Selected Category:** {category_value}")
                 
+                # Investment Allocation Recommendation
                 st.markdown("---")
                 st.markdown("### 📊 Optimal Investment Allocation")
                 
