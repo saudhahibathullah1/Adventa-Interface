@@ -42,8 +42,43 @@ def clean_ad_data(df):
     categorical_cols = df.select_dtypes(include="object").columns
     df[categorical_cols] = df[categorical_cols].fillna("unknown")
     
+    # Handle date column with multiple formats
     if "date" in df.columns:
-        df["date"] = pd.to_datetime(df["date"], dayfirst=True, errors="coerce")
+        # Try different date formats
+        date_formats = [
+            '%d/%m/%Y',  # 1/1/2024
+            '%d-%m-%Y',  # 1-1-2024
+            '%m/%d/%Y',  # 1/1/2024 (US format)
+            '%Y-%m-%d',  # 2024-01-01
+            '%d/%m/%y',  # 1/1/24
+            '%m/%d/%y',  # 1/1/24 (US format)
+            '%d-%m-%y',  # 1-1-24
+            '%Y/%m/%d',  # 2024/1/1
+        ]
+        
+        # Try to convert with the most common format first
+        try:
+            # First try with dayfirst=True for dd/mm/yyyy format
+            df["date"] = pd.to_datetime(df["date"], dayfirst=True, errors="coerce")
+        except:
+            # If that fails, try other formats
+            for fmt in date_formats:
+                try:
+                    df["date"] = pd.to_datetime(df["date"], format=fmt, errors="coerce")
+                    if df["date"].notna().any():
+                        break
+                except:
+                    continue
+        
+        # If still having issues, try letting pandas infer
+        if df["date"].isna().all():
+            try:
+                df["date"] = pd.to_datetime(df["date"], errors="coerce")
+            except:
+                pass
+        
+        # Drop rows where date couldn't be parsed
+        df = df.dropna(subset=["date"])
     
     if "total_revenue" in df.columns:
         if (df["total_revenue"] == 0).all():
@@ -767,60 +802,72 @@ with st.expander("🎯 Predict Campaign Performance", expanded=False):
             y_actual_full = st.session_state["y_actual_full"]
         
         if "date" in df.columns and len(df) > 0:
-            pred_df = pd.DataFrame({
-                'date': pd.to_datetime(df['date']),
-                'Actual Revenue': y_actual_full,
-                'Predicted Revenue': y_predicted_full
-            })
-            pred_df = pred_df.sort_values('date')
-            
-            max_date = pred_df['date'].max()
-            min_date = pred_df['date'].min()
-            
-            col_date1, col_date2 = st.columns(2)
-            with col_date1:
-                start_date = st.date_input("Start Date", value=min_date, min_value=min_date, max_value=max_date, key="start_date_pred")
-            with col_date2:
-                end_date = st.date_input("End Date", value=max_date, min_value=min_date, max_value=max_date, key="end_date_pred")
-            
-            if start_date > end_date:
-                st.error("Start date must be before end date")
-                start_date, end_date = end_date, start_date
-            
-            filtered_df = pred_df[(pred_df['date'] >= pd.to_datetime(start_date)) & (pred_df['date'] <= pd.to_datetime(end_date))]
-            
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(x=filtered_df['date'], y=filtered_df['Actual Revenue'],
-                                    mode='lines', name='Actual Revenue',
-                                    line=dict(color='#3b82f6', width=2)))
-            fig.add_trace(go.Scatter(x=filtered_df['date'], y=filtered_df['Predicted Revenue'],
-                                    mode='lines', name='Predicted Revenue',
-                                    line=dict(color='#8b5cf6', width=2, dash='dash')))
-            
-            fig.update_layout(
-                title="Model Predictions vs Actual Performance",
-                xaxis_title="Date",
-                yaxis_title="Revenue ($)",
-                hovermode='x unified',
-                height=400,
-                margin=dict(l=0, r=0, t=40, b=0),
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                plot_bgcolor='white',
-                paper_bgcolor='white'
-            )
-            st.plotly_chart(fig, use_container_width=True)
-            
-            if len(filtered_df) >= 2:
-                r2_range = r2_score(filtered_df['Actual Revenue'], filtered_df['Predicted Revenue'])
-                mae_range = mean_absolute_error(filtered_df['Actual Revenue'], filtered_df['Predicted Revenue'])
+            # Ensure dates are properly formatted for the chart
+            try:
+                pred_df = pd.DataFrame({
+                    'date': pd.to_datetime(df['date']),
+                    'Actual Revenue': y_actual_full,
+                    'Predicted Revenue': y_predicted_full
+                })
+                # Drop any rows with NaT dates
+                pred_df = pred_df.dropna(subset=['date'])
+                pred_df = pred_df.sort_values('date')
                 
-                col_metric1, col_metric2 = st.columns(2)
-                with col_metric1:
-                    st.metric("R² (Selected Range)", f"{r2_range:.3f}")
-                    st.caption("Proportion of variance explained (0-1, higher is better)")
-                with col_metric2:
-                    st.metric("MAE (Selected Range)", f"${mae_range:,.0f}")
-                    st.caption("Average prediction error in dollars (lower is better)")
+                if not pred_df.empty:
+                    max_date = pred_df['date'].max()
+                    min_date = pred_df['date'].min()
+                    
+                    col_date1, col_date2 = st.columns(2)
+                    with col_date1:
+                        start_date = st.date_input("Start Date", value=min_date, min_value=min_date, max_value=max_date, key="start_date_pred")
+                    with col_date2:
+                        end_date = st.date_input("End Date", value=max_date, min_value=min_date, max_value=max_date, key="end_date_pred")
+                    
+                    if start_date > end_date:
+                        st.error("Start date must be before end date")
+                        start_date, end_date = end_date, start_date
+                    
+                    filtered_df = pred_df[(pred_df['date'] >= pd.to_datetime(start_date)) & (pred_df['date'] <= pd.to_datetime(end_date))]
+                    
+                    if not filtered_df.empty:
+                        fig = go.Figure()
+                        fig.add_trace(go.Scatter(x=filtered_df['date'], y=filtered_df['Actual Revenue'],
+                                                mode='lines', name='Actual Revenue',
+                                                line=dict(color='#3b82f6', width=2)))
+                        fig.add_trace(go.Scatter(x=filtered_df['date'], y=filtered_df['Predicted Revenue'],
+                                                mode='lines', name='Predicted Revenue',
+                                                line=dict(color='#8b5cf6', width=2, dash='dash')))
+                        
+                        fig.update_layout(
+                            title="Model Predictions vs Actual Performance",
+                            xaxis_title="Date",
+                            yaxis_title="Revenue ($)",
+                            hovermode='x unified',
+                            height=400,
+                            margin=dict(l=0, r=0, t=40, b=0),
+                            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                            plot_bgcolor='white',
+                            paper_bgcolor='white'
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+                        
+                        if len(filtered_df) >= 2:
+                            r2_range = r2_score(filtered_df['Actual Revenue'], filtered_df['Predicted Revenue'])
+                            mae_range = mean_absolute_error(filtered_df['Actual Revenue'], filtered_df['Predicted Revenue'])
+                            
+                            col_metric1, col_metric2 = st.columns(2)
+                            with col_metric1:
+                                st.metric("R² (Selected Range)", f"{r2_range:.3f}")
+                                st.caption("Proportion of variance explained (0-1, higher is better)")
+                            with col_metric2:
+                                st.metric("MAE (Selected Range)", f"${mae_range:,.0f}")
+                                st.caption("Average prediction error in dollars (lower is better)")
+                    else:
+                        st.warning("No data available for the selected date range.")
+                else:
+                    st.warning("No valid date data available after processing.")
+            except Exception as e:
+                st.warning(f"Could not display time series chart: {str(e)}")
         else:
             st.warning("Date column not found or empty in dataset.")
         
@@ -1008,38 +1055,48 @@ with st.expander("📊 Campaign Analytics Dashboard", expanded=False):
         with tab2:
             if "date" in df.columns:
                 st.markdown("### Revenue vs Ad Spend Over Time")
-                df['date'] = pd.to_datetime(df['date'])
-                df_time = df.copy()
-                df_time['total_spend'] = df_time[['fb_spend', 'instagram_spend', 'tiktok_spend']].sum(axis=1)
-                df_time = df_time.sort_values('date')
-                
-                fig = make_subplots(specs=[[{"secondary_y": True}]])
-                fig.add_trace(go.Scatter(x=df_time['date'], y=df_time['total_revenue'],
-                                        name='Revenue', line=dict(color='#3b82f6', width=3)),
-                             secondary_y=False)
-                fig.add_trace(go.Scatter(x=df_time['date'], y=df_time['total_spend'],
-                                        name='Ad Spend', line=dict(color='#ef4444', width=3, dash='dash')),
-                             secondary_y=True)
-                
-                fig.update_layout(title="Revenue vs Ad Spend Trend",
-                                 xaxis_title="Date",
-                                 height=450,
-                                 hovermode='x unified',
-                                 plot_bgcolor='white',
-                                 paper_bgcolor='white')
-                fig.update_yaxes(title_text="Revenue ($)", secondary_y=False)
-                fig.update_yaxes(title_text="Ad Spend ($)", secondary_y=True)
-                
-                st.plotly_chart(fig, use_container_width=True)
-                
-                df_time['spend_exceeds_revenue'] = df_time['total_spend'] > df_time['total_revenue']
-                if df_time['spend_exceeds_revenue'].any():
-                    exceed_df = df_time[df_time['spend_exceeds_revenue']]
-                    exceed_dates_list = exceed_df['date'].dt.strftime('%Y-%m-%d').tolist()
-                    exceed_dates_str = ', '.join(exceed_dates_list)
-                    st.warning(f"⚠️ Ad spend exceeded revenue on: {exceed_dates_str}")
-                else:
-                    st.success("✅ Ad spend never exceeded revenue during this period!")
+                try:
+                    df['date'] = pd.to_datetime(df['date'])
+                    df_time = df.copy()
+                    df_time['total_spend'] = df_time[['fb_spend', 'instagram_spend', 'tiktok_spend']].sum(axis=1)
+                    df_time = df_time.sort_values('date')
+                    
+                    fig = make_subplots(specs=[[{"secondary_y": True}]])
+                    fig.add_trace(go.Scatter(x=df_time['date'], y=df_time['total_revenue'],
+                                            name='Revenue', line=dict(color='#3b82f6', width=3)),
+                                 secondary_y=False)
+                    fig.add_trace(go.Scatter(x=df_time['date'], y=df_time['total_spend'],
+                                            name='Ad Spend', line=dict(color='#ef4444', width=3, dash='dash')),
+                                 secondary_y=True)
+                    
+                    fig.update_layout(title="Revenue vs Ad Spend Trend",
+                                     xaxis_title="Date",
+                                     height=450,
+                                     hovermode='x unified',
+                                     plot_bgcolor='white',
+                                     paper_bgcolor='white')
+                    fig.update_yaxes(title_text="Revenue ($)", secondary_y=False)
+                    fig.update_yaxes(title_text="Ad Spend ($)", secondary_y=True)
+                    
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    df_time['spend_exceeds_revenue'] = df_time['total_spend'] > df_time['total_revenue']
+                    if df_time['spend_exceeds_revenue'].any():
+                        exceed_df = df_time[df_time['spend_exceeds_revenue']]
+                        # Safely get dates, handling any NaT values
+                        exceed_dates = exceed_df['date'].dropna()
+                        if not exceed_dates.empty:
+                            exceed_dates_list = exceed_dates.dt.strftime('%Y-%m-%d').tolist()
+                            exceed_dates_str = ', '.join(exceed_dates_list[:5])  # Show first 5 dates
+                            if len(exceed_dates_list) > 5:
+                                exceed_dates_str += f" and {len(exceed_dates_list) - 5} more..."
+                            st.warning(f"⚠️ Ad spend exceeded revenue on: {exceed_dates_str}")
+                        else:
+                            st.success("✅ Ad spend never exceeded revenue during this period!")
+                    else:
+                        st.success("✅ Ad spend never exceeded revenue during this period!")
+                except Exception as e:
+                    st.warning(f"Could not display time series: {str(e)}")
             else:
                 st.info("Date column not found for time series analysis.")
         
@@ -1047,16 +1104,19 @@ with st.expander("📊 Campaign Analytics Dashboard", expanded=False):
             st.markdown("### Channel Performance Heatmap")
             if "category" in df.columns:
                 if "date" in df.columns:
-                    min_date = df["date"].min().date()
-                    max_date = df["date"].max().date()
-                    
-                    col_date1, col_date2 = st.columns(2)
-                    with col_date1:
-                        start_date = st.date_input("Start Date", value=min_date, min_value=min_date, max_value=max_date, key="heatmap_start")
-                    with col_date2:
-                        end_date = st.date_input("End Date", value=max_date, min_value=min_date, max_value=max_date, key="heatmap_end")
-                    
-                    filtered_df = df[(df["date"] >= pd.to_datetime(start_date)) & (df["date"] <= pd.to_datetime(end_date))]
+                    try:
+                        min_date = df["date"].min().date()
+                        max_date = df["date"].max().date()
+                        
+                        col_date1, col_date2 = st.columns(2)
+                        with col_date1:
+                            start_date = st.date_input("Start Date", value=min_date, min_value=min_date, max_value=max_date, key="heatmap_start")
+                        with col_date2:
+                            end_date = st.date_input("End Date", value=max_date, min_value=min_date, max_value=max_date, key="heatmap_end")
+                        
+                        filtered_df = df[(df["date"] >= pd.to_datetime(start_date)) & (df["date"] <= pd.to_datetime(end_date))]
+                    except:
+                        filtered_df = df.copy()
                 else:
                     filtered_df = df.copy()
                 
