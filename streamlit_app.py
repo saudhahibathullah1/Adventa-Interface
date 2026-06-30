@@ -663,15 +663,35 @@ with st.expander("📊 Generate Synthetic Data", expanded=True):
             fig.update_layout(height=300, margin=dict(l=0, r=0, t=40, b=0))
             st.plotly_chart(fig, use_container_width=True)
             
-            # Show the strong relationship between spend and revenue
+            # Show the strong relationship between spend and revenue (without trendline to avoid statsmodels dependency)
             st.subheader("📈 Spend vs Revenue Relationship")
-            fig_scatter = px.scatter(synthetic_df, x='fb_spend', y='total_revenue', 
-                                     title="Facebook Spend vs Revenue",
-                                     labels={'fb_spend': 'Facebook Spend ($)', 'total_revenue': 'Total Revenue ($)'},
-                                     trendline="ols",
-                                     color='category')
-            fig_scatter.update_layout(height=300, margin=dict(l=0, r=0, t=40, b=0))
-            st.plotly_chart(fig_scatter, use_container_width=True)
+            
+            # Create three separate scatter plots for each channel
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                fig1 = px.scatter(synthetic_df, x='fb_spend', y='total_revenue', 
+                                 title="Facebook",
+                                 labels={'fb_spend': 'Spend ($)', 'total_revenue': 'Revenue ($)'},
+                                 color='category')
+                fig1.update_layout(height=250, margin=dict(l=0, r=0, t=30, b=0))
+                st.plotly_chart(fig1, use_container_width=True)
+            
+            with col2:
+                fig2 = px.scatter(synthetic_df, x='instagram_spend', y='total_revenue', 
+                                 title="Instagram",
+                                 labels={'instagram_spend': 'Spend ($)', 'total_revenue': 'Revenue ($)'},
+                                 color='category')
+                fig2.update_layout(height=250, margin=dict(l=0, r=0, t=30, b=0))
+                st.plotly_chart(fig2, use_container_width=True)
+            
+            with col3:
+                fig3 = px.scatter(synthetic_df, x='tiktok_spend', y='total_revenue', 
+                                 title="TikTok",
+                                 labels={'tiktok_spend': 'Spend ($)', 'total_revenue': 'Revenue ($)'},
+                                 color='category')
+                fig3.update_layout(height=250, margin=dict(l=0, r=0, t=30, b=0))
+                st.plotly_chart(fig3, use_container_width=True)
             
             # Download button
             csv = synthetic_df.to_csv(index=False).encode('utf-8')
