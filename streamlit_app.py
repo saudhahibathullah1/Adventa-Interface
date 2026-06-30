@@ -145,7 +145,7 @@ def predict_revenue_lasso(df, model, fb_spend, instagram_spend, tiktok_spend, ca
     
     return predicted_revenue
 
-def generate_synthetic_data(num_rows=100, start_date="2024-01-01"):
+def generate_synthetic_data(num_rows=500, start_date="2024-01-01"):
     """Generate synthetic campaign data with strong predictive patterns"""
     categories = ['Home', 'Electronics', 'Clothing', 'Beauty']
     category_weights = [0.25, 0.25, 0.25, 0.25]
@@ -599,36 +599,20 @@ with st.expander("📊 Generate Synthetic Data", expanded=True):
     st.markdown("""
     <div class="generator-card">
         <p style="font-weight: 500; color: #1e293b; margin-bottom: 10px;">
-            💡 Generate realistic ad campaign data with the following parameters:
+            💡 Generate 500 synthetic campaign records with strong predictive patterns
+        </p>
+        <p style="color: #64748b; font-size: 0.9rem;">
+            📅 Start Date: January 1, 2024 | 📊 Records: 500 Campaigns
         </p>
     </div>
     """, unsafe_allow_html=True)
     
-    col_gen1, col_gen2 = st.columns(2)
-    
-    with col_gen1:
-        num_rows = st.number_input(
-            "📊 Number of Campaigns", 
-            min_value=50, 
-            max_value=500, 
-            value=100, 
-            step=10,
-            help="How many campaign records to generate"
-        )
-        
-    with col_gen2:
-        start_date = st.date_input(
-            "📅 Start Date", 
-            value=datetime(2024, 1, 1),
-            help="Starting date for the campaign data"
-        )
-    
-    if st.button("🎲 Generate Synthetic Data", type="primary", use_container_width=True):
-        with st.spinner("Generating synthetic campaign data..."):
-            synthetic_df = generate_synthetic_data(num_rows, start_date.strftime("%Y-%m-%d"))
+    if st.button("🎲 Generate 500 Synthetic Records", type="primary", use_container_width=True):
+        with st.spinner("Generating 500 synthetic campaign records..."):
+            synthetic_df = generate_synthetic_data(500, "2024-01-01")
             st.session_state["synthetic_df"] = synthetic_df
             
-            st.success(f"✅ Successfully generated {len(synthetic_df)} synthetic campaign records!")
+            st.success("✅ Successfully generated 500 synthetic campaign records!")
             
             # Check the R² of the generated data
             from sklearn.linear_model import LinearRegression
@@ -651,47 +635,9 @@ with st.expander("📊 Generate Synthetic Data", expanded=True):
             with col_metric5:
                 st.metric("🎯 Data Quality", f"R² {r2_check:.3f}", delta="High" if r2_check > 0.85 else "Medium")
             
-            st.subheader("📄 Data Preview")
+            # Raw Data Preview only
+            st.subheader("📄 Raw Data Preview")
             st.dataframe(synthetic_df.head(10), use_container_width=True)
-            
-            # Category distribution
-            st.subheader("📊 Category Distribution")
-            category_counts = synthetic_df['category'].value_counts()
-            fig = px.pie(values=category_counts.values, names=category_counts.index, 
-                        title="Campaign Category Distribution",
-                        color_discrete_sequence=px.colors.qualitative.Set3)
-            fig.update_layout(height=300, margin=dict(l=0, r=0, t=40, b=0))
-            st.plotly_chart(fig, use_container_width=True)
-            
-            # Show the strong relationship between spend and revenue (without trendline to avoid statsmodels dependency)
-            st.subheader("📈 Spend vs Revenue Relationship")
-            
-            # Create three separate scatter plots for each channel
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                fig1 = px.scatter(synthetic_df, x='fb_spend', y='total_revenue', 
-                                 title="Facebook",
-                                 labels={'fb_spend': 'Spend ($)', 'total_revenue': 'Revenue ($)'},
-                                 color='category')
-                fig1.update_layout(height=250, margin=dict(l=0, r=0, t=30, b=0))
-                st.plotly_chart(fig1, use_container_width=True)
-            
-            with col2:
-                fig2 = px.scatter(synthetic_df, x='instagram_spend', y='total_revenue', 
-                                 title="Instagram",
-                                 labels={'instagram_spend': 'Spend ($)', 'total_revenue': 'Revenue ($)'},
-                                 color='category')
-                fig2.update_layout(height=250, margin=dict(l=0, r=0, t=30, b=0))
-                st.plotly_chart(fig2, use_container_width=True)
-            
-            with col3:
-                fig3 = px.scatter(synthetic_df, x='tiktok_spend', y='total_revenue', 
-                                 title="TikTok",
-                                 labels={'tiktok_spend': 'Spend ($)', 'total_revenue': 'Revenue ($)'},
-                                 color='category')
-                fig3.update_layout(height=250, margin=dict(l=0, r=0, t=30, b=0))
-                st.plotly_chart(fig3, use_container_width=True)
             
             # Download button
             csv = synthetic_df.to_csv(index=False).encode('utf-8')
@@ -703,44 +649,16 @@ with st.expander("📊 Generate Synthetic Data", expanded=True):
                 use_container_width=True
             )
             
-            st.info("💡 This synthetic data has a strong predictive pattern (high R²) and is ready for analysis. Go to the 'Data Import' section and click 'Use Synthetic Data' to train the model!")
+            st.info("💡 Synthetic data generated! Please download the CSV file and upload it in the 'Data Import' section below to train the model.")
 
 # ========== DATA IMPORT SECTION ==========
 st.markdown('<div id="data-import"></div>', unsafe_allow_html=True)
 st.markdown("## 📁 Data Import")
 st.markdown("Upload your campaign data to get started")
 
-# Option to use synthetic data directly
+# Inform users about synthetic data if it exists
 if "synthetic_df" in st.session_state:
-    col_import1, col_import2 = st.columns([2, 1])
-    with col_import1:
-        st.success("💡 Synthetic data is available and ready to use! Click the button to train the model.")
-    with col_import2:
-        if st.button("🔄 Use Synthetic Data", use_container_width=True):
-            synthetic_df = st.session_state["synthetic_df"]
-            
-            with st.spinner("Processing synthetic data and training AI model..."):
-                cleaned_df = clean_ad_data(synthetic_df)
-                st.session_state["cleaned_df"] = cleaned_df
-                model, error, r2, mae = train_prediction_model(cleaned_df)
-                
-                if model:
-                    st.session_state["trained_model"] = model
-                    st.session_state["model_type"] = "lasso"
-                    st.success("✅ Synthetic dataset processed and AI model trained successfully!")
-                    
-                    if r2 >= 0.9:
-                        st.balloons()
-                        st.success("🎯 Excellent model! R² > 0.9 - Very strong predictive power")
-                    elif r2 >= 0.7:
-                        st.info("👍 Good model - Ready for predictions")
-                    else:
-                        st.warning("⚠️ Model could be improved - Consider generating more data or adjusting parameters")
-                else:
-                    st.error(f"Model training failed: {error}")
-                    st.session_state["model_type"] = "none"
-            
-            st.rerun()
+    st.info("💡 You have generated synthetic data. Please download it using the button above and upload it below to train the model.")
 
 uploaded_file = st.file_uploader(
     "Choose CSV file",
