@@ -146,9 +146,24 @@ def predict_revenue_lasso(df, model, fb_spend, instagram_spend, tiktok_spend, ca
     return predicted_revenue
 
 def generate_synthetic_data(num_rows=100, start_date="2024-01-01"):
-    """Generate synthetic campaign data with realistic patterns"""
+    """Generate synthetic campaign data with strong predictive patterns"""
     categories = ['Home', 'Electronics', 'Clothing', 'Beauty']
     category_weights = [0.25, 0.25, 0.25, 0.25]
+    
+    # Define channel effectiveness weights (these will create a strong predictive pattern)
+    channel_weights = {
+        'fb': 2.5,
+        'instagram': 2.8,
+        'tiktok': 2.2
+    }
+    
+    # Category multipliers for revenue
+    category_multipliers = {
+        'Home': 1.0,
+        'Electronics': 1.3,
+        'Clothing': 0.9,
+        'Beauty': 1.1
+    }
     
     start = datetime.strptime(start_date, "%Y-%m-%d")
     dates = [start + timedelta(days=7*i) for i in range(num_rows)]
@@ -163,24 +178,26 @@ def generate_synthetic_data(num_rows=100, start_date="2024-01-01"):
         'total_revenue': []
     }
     
+    # Generate data with strong, predictable patterns
     for i in range(num_rows):
-        seasonal_factor = 1 + 0.3 * np.sin(2 * np.pi * i / 52)
-        trend = 1 + 0.001 * i
-        base_spend = 1500 * trend * seasonal_factor + random.uniform(-300, 300)
+        # Base spend with mild variation
+        base_spend = 1500 + (i * 5) + random.uniform(-200, 200)
         base_spend = max(500, base_spend)
         
+        # Category-specific adjustments
         category = data['category'][i]
         if category == 'Electronics':
-            base_spend *= random.uniform(1.0, 1.3)
+            base_spend *= random.uniform(1.1, 1.4)
         elif category == 'Beauty':
-            base_spend *= random.uniform(0.9, 1.2)
+            base_spend *= random.uniform(0.95, 1.15)
         elif category == 'Clothing':
-            base_spend *= random.uniform(0.8, 1.1)
+            base_spend *= random.uniform(0.85, 1.05)
         
-        fb_ratio = random.uniform(0.2, 0.5)
-        insta_ratio = random.uniform(0.2, 0.5)
+        # Allocate spend across channels with some randomness
+        fb_ratio = random.uniform(0.25, 0.45)
+        insta_ratio = random.uniform(0.25, 0.45)
         tiktok_ratio = 1 - fb_ratio - insta_ratio
-        tiktok_ratio = max(0.1, tiktok_ratio)
+        tiktok_ratio = max(0.15, min(0.40, tiktok_ratio))
         
         fb = base_spend * fb_ratio
         insta = base_spend * insta_ratio
@@ -190,18 +207,50 @@ def generate_synthetic_data(num_rows=100, start_date="2024-01-01"):
         data['instagram_spend'].append(round(insta, 2))
         data['tiktok_spend'].append(round(tiktok, 2))
         
+        # Calculate revenue with strong, predictable relationship
+        # Each channel has a specific effectiveness weight
         total_spend = fb + insta + tiktok
-        roi_multiplier = random.uniform(1.8, 3.2)
-        revenue = total_spend * roi_multiplier + random.uniform(-500, 800)
-        revenue = max(0, revenue)
         
-        if random.random() < 0.1:
-            revenue *= random.uniform(0.7, 1.3)
+        # Base revenue from spend with channel weights
+        weighted_revenue = (
+            fb * channel_weights['fb'] +
+            insta * channel_weights['instagram'] +
+            tiktok * channel_weights['tiktok']
+        )
+        
+        # Apply category multiplier
+        category_mult = category_multipliers[category]
+        
+        # Add some randomness but keep it tight for high R²
+        noise = random.uniform(-0.05, 0.05) * weighted_revenue  # Only 5% noise
+        
+        revenue = (weighted_revenue * category_mult) + noise
+        revenue = max(100, revenue)  # Minimum revenue
+        
+        # Add small seasonal trend
+        if i % 4 == 0:  # Quarterly bump
+            revenue *= 1.1
         
         data['total_revenue'].append(round(revenue, 2))
     
     df = pd.DataFrame(data)
     df['date'] = pd.to_datetime(df['date'])
+    
+    # Calculate the actual R² to ensure it's high
+    # We'll use a simple linear model to verify
+    from sklearn.linear_model import LinearRegression
+    X_test = df[['fb_spend', 'instagram_spend', 'tiktok_spend']]
+    y_test = df['total_revenue']
+    lr = LinearRegression()
+    lr.fit(X_test, y_test)
+    r2_test = lr.score(X_test, y_test)
+    
+    # If R² is not high enough, we need to add more signal
+    if r2_test < 0.85:
+        # Add a stronger signal component
+        signal = (df['fb_spend'] * 2.5 + df['instagram_spend'] * 2.8 + df['tiktok_spend'] * 2.2)
+        df['total_revenue'] = signal + df['total_revenue'] * 0.2
+        df['total_revenue'] = df['total_revenue'].round(2)
     
     return df
 
@@ -581,7 +630,15 @@ with st.expander("📊 Generate Synthetic Data", expanded=True):
             
             st.success(f"✅ Successfully generated {len(synthetic_df)} synthetic campaign records!")
             
-            col_metric1, col_metric2, col_metric3, col_metric4 = st.columns(4)
+            # Check the R² of the generated data
+            from sklearn.linear_model import LinearRegression
+            X_check = synthetic_df[['fb_spend', 'instagram_spend', 'tiktok_spend']]
+            y_check = synthetic_df['total_revenue']
+            lr_check = LinearRegression()
+            lr_check.fit(X_check, y_check)
+            r2_check = lr_check.score(X_check, y_check)
+            
+            col_metric1, col_metric2, col_metric3, col_metric4, col_metric5 = st.columns(5)
             with col_metric1:
                 st.metric("📊 Total Campaigns", len(synthetic_df))
             with col_metric2:
@@ -591,10 +648,13 @@ with st.expander("📊 Generate Synthetic Data", expanded=True):
             with col_metric4:
                 categories_count = synthetic_df['category'].nunique()
                 st.metric("🏷️ Categories", categories_count)
+            with col_metric5:
+                st.metric("🎯 Data Quality", f"R² {r2_check:.3f}", delta="High" if r2_check > 0.85 else "Medium")
             
             st.subheader("📄 Data Preview")
             st.dataframe(synthetic_df.head(10), use_container_width=True)
             
+            # Category distribution
             st.subheader("📊 Category Distribution")
             category_counts = synthetic_df['category'].value_counts()
             fig = px.pie(values=category_counts.values, names=category_counts.index, 
@@ -603,6 +663,17 @@ with st.expander("📊 Generate Synthetic Data", expanded=True):
             fig.update_layout(height=300, margin=dict(l=0, r=0, t=40, b=0))
             st.plotly_chart(fig, use_container_width=True)
             
+            # Show the strong relationship between spend and revenue
+            st.subheader("📈 Spend vs Revenue Relationship")
+            fig_scatter = px.scatter(synthetic_df, x='fb_spend', y='total_revenue', 
+                                     title="Facebook Spend vs Revenue",
+                                     labels={'fb_spend': 'Facebook Spend ($)', 'total_revenue': 'Total Revenue ($)'},
+                                     trendline="ols",
+                                     color='category')
+            fig_scatter.update_layout(height=300, margin=dict(l=0, r=0, t=40, b=0))
+            st.plotly_chart(fig_scatter, use_container_width=True)
+            
+            # Download button
             csv = synthetic_df.to_csv(index=False).encode('utf-8')
             st.download_button(
                 label="📥 Download Synthetic Data as CSV",
@@ -612,7 +683,7 @@ with st.expander("📊 Generate Synthetic Data", expanded=True):
                 use_container_width=True
             )
             
-            st.info("💡 This synthetic data is now ready to be used for analysis. Go to the 'Data Import' section to upload and process it, or click the download button above to save it locally.")
+            st.info("💡 This synthetic data has a strong predictive pattern (high R²) and is ready for analysis. Go to the 'Data Import' section and click 'Use Synthetic Data' to train the model!")
 
 # ========== DATA IMPORT SECTION ==========
 st.markdown('<div id="data-import"></div>', unsafe_allow_html=True)
@@ -623,7 +694,7 @@ st.markdown("Upload your campaign data to get started")
 if "synthetic_df" in st.session_state:
     col_import1, col_import2 = st.columns([2, 1])
     with col_import1:
-        st.info("💡 Synthetic data is available! You can either upload your own CSV or use the generated data.")
+        st.success("💡 Synthetic data is available and ready to use! Click the button to train the model.")
     with col_import2:
         if st.button("🔄 Use Synthetic Data", use_container_width=True):
             synthetic_df = st.session_state["synthetic_df"]
@@ -649,7 +720,6 @@ if "synthetic_df" in st.session_state:
                     st.error(f"Model training failed: {error}")
                     st.session_state["model_type"] = "none"
             
-            # Use st.rerun() which is the new method
             st.rerun()
 
 uploaded_file = st.file_uploader(
